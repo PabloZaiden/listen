@@ -31,10 +31,7 @@ async function serveStatic(req: Request): Promise<Response> {
   if (url.pathname === "/assets/main.js") {
     return new Response(mainJs, { headers: { "content-type": "application/javascript; charset=utf-8" } });
   }
-  if (!url.pathname.startsWith("/api/")) {
-    return new Response(indexHtml, { headers: { "content-type": "text/html; charset=utf-8" } });
-  }
-  return new Response("Not found", { status: 404 });
+  return new Response(indexHtml, { headers: { "content-type": "text/html; charset=utf-8" } });
 }
 
 export function createFetchHandler(config: ServerConfig): (req: Request, server?: Server<WebSocketData>) => Promise<Response | undefined> {

@@ -30551,11 +30551,37 @@ function NotificationList({
 }
 function NotificationDetailView({ id, back }) {
   const [detail, setDetail] = import_react3.useState();
+  const [error, setError] = import_react3.useState();
   import_react3.useEffect(() => {
     const controller = new AbortController;
-    json(`/api/notifications/${encodeURIComponent(id)}`, { signal: controller.signal }).then((response) => setDetail(response.notification));
+    setDetail(undefined);
+    setError(undefined);
+    json(`/api/notifications/${encodeURIComponent(id)}`, { signal: controller.signal }).then((response) => setDetail(response.notification)).catch((err) => {
+      if (!controller.signal.aborted) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    });
     return () => controller.abort();
   }, [id]);
+  if (error) {
+    return /* @__PURE__ */ jsx_dev_runtime.jsxDEV("section", {
+      className: "panel detail",
+      children: [
+        /* @__PURE__ */ jsx_dev_runtime.jsxDEV("button", {
+          type: "button",
+          onClick: back,
+          children: "Back"
+        }, undefined, false, undefined, this),
+        /* @__PURE__ */ jsx_dev_runtime.jsxDEV("p", {
+          className: "error",
+          children: [
+            "Could not load notification: ",
+            error
+          ]
+        }, undefined, true, undefined, this)
+      ]
+    }, undefined, true, undefined, this);
+  }
   if (!detail) {
     return /* @__PURE__ */ jsx_dev_runtime.jsxDEV("section", {
       className: "panel",

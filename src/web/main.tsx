@@ -235,12 +235,29 @@ function NotificationList({
 
 function NotificationDetailView({ id, back }: { id: string; back: () => void }): React.ReactElement {
   const [detail, setDetail] = useState<NotificationDetail>();
+  const [error, setError] = useState<string>();
   useEffect(() => {
     const controller = new AbortController();
+    setDetail(undefined);
+    setError(undefined);
     void json<{ notification: NotificationDetail }>(`/api/notifications/${encodeURIComponent(id)}`, { signal: controller.signal })
-      .then((response) => setDetail(response.notification));
+      .then((response) => setDetail(response.notification))
+      .catch((err) => {
+        if (!controller.signal.aborted) {
+          setError(err instanceof Error ? err.message : String(err));
+        }
+      });
     return () => controller.abort();
   }, [id]);
+
+  if (error) {
+    return (
+      <section className="panel detail">
+        <button type="button" onClick={back}>Back</button>
+        <p className="error">Could not load notification: {error}</p>
+      </section>
+    );
+  }
 
   if (!detail) {
     return <section className="panel">Loading...</section>;
