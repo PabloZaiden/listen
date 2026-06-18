@@ -1,0 +1,65 @@
+# Agent Guidelines for Listen
+
+## General Agentic Workflow
+
+Use Bun only. Run `bun install` before development when dependencies are missing. Run `bun run build` before tests, and run `bun run build && bun run test` before calling work complete.
+
+## Project Overview
+
+Listen is a single-user notification inbox for coding agents. It has a Bun backend, React browser UI, SQLite persistence, passkey authentication, source-specific webhook ingestion, WebSocket realtime updates, and a single `listen` CLI/server binary.
+
+## Authentication and Security
+
+All protected APIs must stay passkey-protected. The webhook endpoint is the only unauthenticated write endpoint. Never log webhook tokens, passkey material, cookies, auth headers, or raw credentials. Never store raw webhook tokens. Never trust `source` from webhook payloads.
+
+## TypeScript
+
+Keep strict types. Prefer shared contracts from `packages/contracts` and shared limits from `packages/shared`. Use bracket notation for environment variables.
+
+## Naming Conventions
+
+Use clear English names for code, comments, API messages, documentation, and release metadata.
+
+## Error Handling
+
+Never fail silently. Do not leave empty catch blocks. Surface structured API errors with stable machine-readable error codes. Avoid duplicate logging across layers.
+
+## Async Patterns
+
+Use `async`/`await` for I/O. Keep event delivery synchronous and best-effort; a listener failure must not prevent delivery to other listeners.
+
+## React Components
+
+Prefer small components and hooks. Components over 300 LOC should be decomposed. Use AbortController in effects that load data. UI changes should be manually checked on desktop and mobile when possible.
+
+## Comments
+
+Only comment code that needs clarification. Do not add obvious comments.
+
+## Formatting
+
+Follow the surrounding TypeScript style. Keep code readable and avoid unrelated rewrites.
+
+## API Routes
+
+API routes must delegate mutations to core managers. API modules must not import persistence modules directly. Persistence must use parameterized SQL.
+
+## Bun Specifics
+
+Use Bun APIs and scripts. Do not add Node-only tooling. Use `bun:sqlite` for SQLite and `Bun.serve` for HTTP/WebSocket serving.
+
+## Testing
+
+Use `bun test` through repository scripts. Prefer API/integration tests over brittle frontend component tests. Do not add Playwright tests; use Playwright only for manual UI validation when needed.
+
+## Database Migrations
+
+Keep the base schema in `src/persistence/database.ts` for initial release. Future schema changes must use sequential idempotent migrations in `src/persistence/migrations`.
+
+## Security Anti-Patterns to Avoid
+
+Do not use `INSERT OR REPLACE`. Do not interpolate untrusted values into SQL. Use safe JSON parsing for persisted JSON. Do not enable raw HTML Markdown rendering. Do not allow non-PNG icon data URLs.
+
+## Common Patterns
+
+Use API -> Core -> Persistence imports. Use shared zod schemas for validation. Use `@pablozaiden/installer` for update behavior. When in doubt, inspect `github.com/pablozaiden/clanky` and follow the closest pattern unless a current Listen requirement differs. WebSocket realtime updates should follow Clanky's `/api/ws`, connection tracking, cleanup, ping/pong, and frontend hook patterns.

@@ -1,0 +1,8 @@
+{
+  "name": "@pablozaiden/listen-binary",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun src/build.ts"
+  }
+}

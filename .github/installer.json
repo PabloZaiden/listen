@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "repo": "pablozaiden/listen",
+  "installDir": "$HOME/.local/bin",
+  "binaries": [
+    {
+      "name": "listen",
+      "assetPrefix": "listen",
+      "postInstallMessage": "Run 'listen help' to see available commands. Use 'listen serve' to start the server."
+    }
+  ],
+  "checksums": {
+    "required": true,
+    "extension": ".sha256"
+  },
+  "platforms": {
+    "linux": ["x64", "arm64"],
+    "darwin": ["x64", "arm64"]
+  }
+}
