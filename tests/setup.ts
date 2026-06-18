@@ -24,6 +24,7 @@ afterEach(() => {
   resetEventEmitterForTests();
   closeDatabaseForTests();
   delete process.env["LISTEN_WEBHOOK_URL"];
+  delete process.env["LISTEN_WEB_DIST_DIR"];
   rmSync(dataDir, { recursive: true, force: true });
   rmSync(homeDir, { recursive: true, force: true });
 });

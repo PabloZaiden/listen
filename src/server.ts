@@ -15,12 +15,35 @@ function getConfiguredWebDistDir(): string | undefined {
   return configuredDir ? configuredDir.replace(/\/+$/, "") : undefined;
 }
 
-function getWebAssetPath(distDir: string, pathname: string): string {
-  const normalizedPath = pathPosix.normalize(pathname === "/" ? "/index.html" : pathname);
+function getWebAssetPath(distDir: string, pathname: string): string | undefined {
+  const requestedPath = pathname === "/" ? "/index.html" : pathname;
+  const requestedSegments = requestedPath.split("/").filter((segment) => segment.length > 0);
+  if (requestedSegments.includes("..")) {
+    return undefined;
+  }
+
+  const normalizedPath = pathPosix.normalize(requestedPath);
   const segments = normalizedPath
     .split("/")
     .filter((segment) => segment.length > 0 && segment !== "." && segment !== "..");
   return `${distDir}/${segments.join("/")}`;
+}
+
+function acceptsHtml(req: Request): boolean {
+  const accept = req.headers.get("accept");
+  if (!accept) {
+    return true;
+  }
+
+  return accept.split(",").some((part) => {
+    const mimeType = part.split(";", 1)[0]?.trim().toLowerCase();
+    return mimeType === "text/html" || mimeType === "application/xhtml+xml" || mimeType === "*/*";
+  });
+}
+
+function looksLikeFileAsset(pathname: string): boolean {
+  const lastSegment = pathname.split("/").filter((segment) => segment.length > 0).at(-1) ?? "";
+  return /\.[^/.]+$/.test(lastSegment);
 }
 
 function decodeWebPathname(pathname: string): string | undefined {
@@ -43,9 +66,18 @@ export async function serveWebApp(req: Request): Promise<Response> {
     return new Response("Malformed request path", { status: 400 });
   }
 
-  const assetFile = Bun.file(getWebAssetPath(distDir, decodedPathname));
+  const assetPath = getWebAssetPath(distDir, decodedPathname);
+  if (!assetPath) {
+    return new Response("Not found", { status: 404 });
+  }
+
+  const assetFile = Bun.file(assetPath);
   if (await assetFile.exists()) {
     return new Response(assetFile);
+  }
+
+  if (!acceptsHtml(req) || looksLikeFileAsset(decodedPathname)) {
+    return new Response("Not found", { status: 404 });
   }
 
   const spaIndex = Bun.file(`${distDir}/index.html`);
