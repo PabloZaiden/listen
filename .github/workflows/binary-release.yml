@@ -1,0 +1,22 @@
+name: Binary Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  binaries:
+    uses: pablozaiden/installer/.github/workflows/reusable-binary-release.yml@2e28bc9fbf69385ac5172e526a1268f72db02363
+    permissions:
+      contents: write
+    with:
+      prebuild_command: bun run build
+      binaries: |
+        [
+          {
+            "name": "listen",
+            "asset_prefix": "listen",
+            "build_command": "bun --cwd apps/listen src/build.ts --target=$BUN_TARGET",
+            "output_path": "apps/listen/dist/listen-$RELEASE_TARGET"
+          }
+        ]

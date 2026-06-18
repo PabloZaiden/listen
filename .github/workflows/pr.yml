@@ -1,0 +1,32 @@
+name: Pull Request
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - run: bun run test
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - run: |
+          LISTEN_DISABLE_PASSKEY=true LISTEN_DISABLE_SAME_ORIGIN_CHECK=true LISTEN_PORT=3018 bun run dev &
+          PID=$!
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:3018/api/health && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3018/
+          curl -fsS http://127.0.0.1:3018/styles.css
+          kill "$PID"
