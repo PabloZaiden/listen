@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -265,11 +265,14 @@ function NotificationDetailView({ id, back }: { id: string; back: () => void }):
 
   return (
     <section className="panel detail">
-      <button type="button" onClick={back}>Back</button>
-      {detail.icon ? <img className="detail-icon" src={detail.icon} alt="" /> : null}
-      <h2>{detail.title}</h2>
-      <p>{detail.shortDescription}</p>
-      <small>{detail.source} • {new Date(detail.createdAt).toLocaleString()}</small>
+      <div className="detail-summary">
+        {detail.icon ? <img className="detail-icon" src={detail.icon} alt="" /> : <div className="detail-icon placeholder-icon" />}
+        <div>
+          <h2>{detail.title}</h2>
+          <p>{detail.shortDescription}</p>
+          <small>{detail.source} • {new Date(detail.createdAt).toLocaleString()}</small>
+        </div>
+      </div>
       <div className="markdown">
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
@@ -288,6 +291,9 @@ function NotificationDetailView({ id, back }: { id: string; back: () => void }):
         >
           {detail.markdownContent}
         </ReactMarkdown>
+      </div>
+      <div className="detail-actions">
+        <button type="button" onClick={back}>Back</button>
       </div>
     </section>
   );
@@ -332,8 +338,6 @@ function App(): React.ReactElement {
     }
   }, [ws.lastEvent, sourceId, refreshSources]);
 
-  const liveLabel = useMemo(() => ws.status === "open" ? "Live" : ws.status === "connecting" ? "Reconnecting" : "Offline", [ws.status]);
-
   if (!config) {
     return <main className="app"><div className="auth-card">Loading Listen...</div></main>;
   }
@@ -344,10 +348,8 @@ function App(): React.ReactElement {
   return (
     <main className="app">
       <header>
-        <h1>Listen</h1>
-        <span className={`live ${ws.status}`}>{liveLabel}</span>
+        <button type="button" className="brand-button" onClick={() => setView({ name: "list" })}>Listen</button>
         <nav>
-          <button type="button" onClick={() => setView({ name: "list" })}>Inbox</button>
           <button type="button" onClick={() => setView({ name: "sources" })}>Sources</button>
           <button type="button" onClick={() => setView({ name: "settings" })}>Settings</button>
         </nav>
@@ -367,8 +369,10 @@ function App(): React.ReactElement {
       {view.name === "settings" ? (
         <section className="panel">
           <h2>Settings</h2>
-          <button type="button" onClick={() => void json("/api/passkey-auth/logout", { method: "POST" }).then(refreshConfig)}>Logout</button>
-          <button type="button" className="danger" onClick={() => confirm("Delete the configured passkey?") && void json("/api/passkey-auth/passkey", { method: "DELETE" }).then(refreshConfig)}>Delete passkey</button>
+          <div className="settings-actions">
+            <button type="button" onClick={() => void json("/api/passkey-auth/logout", { method: "POST" }).then(refreshConfig)}>Logout</button>
+            <button type="button" className="danger" onClick={() => confirm("Delete the configured passkey?") && void json("/api/passkey-auth/passkey", { method: "DELETE" }).then(refreshConfig)}>Delete passkey</button>
+          </div>
         </section>
       ) : null}
     </main>

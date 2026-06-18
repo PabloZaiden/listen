@@ -30591,27 +30591,33 @@ function NotificationDetailView({ id, back }) {
   return /* @__PURE__ */ jsx_dev_runtime.jsxDEV("section", {
     className: "panel detail",
     children: [
-      /* @__PURE__ */ jsx_dev_runtime.jsxDEV("button", {
-        type: "button",
-        onClick: back,
-        children: "Back"
-      }, undefined, false, undefined, this),
-      detail.icon ? /* @__PURE__ */ jsx_dev_runtime.jsxDEV("img", {
-        className: "detail-icon",
-        src: detail.icon,
-        alt: ""
-      }, undefined, false, undefined, this) : null,
-      /* @__PURE__ */ jsx_dev_runtime.jsxDEV("h2", {
-        children: detail.title
-      }, undefined, false, undefined, this),
-      /* @__PURE__ */ jsx_dev_runtime.jsxDEV("p", {
-        children: detail.shortDescription
-      }, undefined, false, undefined, this),
-      /* @__PURE__ */ jsx_dev_runtime.jsxDEV("small", {
+      /* @__PURE__ */ jsx_dev_runtime.jsxDEV("div", {
+        className: "detail-summary",
         children: [
-          detail.source,
-          " • ",
-          new Date(detail.createdAt).toLocaleString()
+          detail.icon ? /* @__PURE__ */ jsx_dev_runtime.jsxDEV("img", {
+            className: "detail-icon",
+            src: detail.icon,
+            alt: ""
+          }, undefined, false, undefined, this) : /* @__PURE__ */ jsx_dev_runtime.jsxDEV("div", {
+            className: "detail-icon placeholder-icon"
+          }, undefined, false, undefined, this),
+          /* @__PURE__ */ jsx_dev_runtime.jsxDEV("div", {
+            children: [
+              /* @__PURE__ */ jsx_dev_runtime.jsxDEV("h2", {
+                children: detail.title
+              }, undefined, false, undefined, this),
+              /* @__PURE__ */ jsx_dev_runtime.jsxDEV("p", {
+                children: detail.shortDescription
+              }, undefined, false, undefined, this),
+              /* @__PURE__ */ jsx_dev_runtime.jsxDEV("small", {
+                children: [
+                  detail.source,
+                  " • ",
+                  new Date(detail.createdAt).toLocaleString()
+                ]
+              }, undefined, true, undefined, this)
+            ]
+          }, undefined, true, undefined, this)
         ]
       }, undefined, true, undefined, this),
       /* @__PURE__ */ jsx_dev_runtime.jsxDEV("div", {
@@ -30635,6 +30641,14 @@ function NotificationDetailView({ id, back }) {
             }, undefined, false, undefined, this)
           },
           children: detail.markdownContent
+        }, undefined, false, undefined, this)
+      }, undefined, false, undefined, this),
+      /* @__PURE__ */ jsx_dev_runtime.jsxDEV("div", {
+        className: "detail-actions",
+        children: /* @__PURE__ */ jsx_dev_runtime.jsxDEV("button", {
+          type: "button",
+          onClick: back,
+          children: "Back"
         }, undefined, false, undefined, this)
       }, undefined, false, undefined, this)
     ]
@@ -30674,7 +30688,6 @@ function App() {
       refreshSources();
     }
   }, [ws.lastEvent, sourceId, refreshSources]);
-  const liveLabel = import_react3.useMemo(() => ws.status === "open" ? "Live" : ws.status === "connecting" ? "Reconnecting" : "Offline", [ws.status]);
   if (!config) {
     return /* @__PURE__ */ jsx_dev_runtime.jsxDEV("main", {
       className: "app",
@@ -30698,20 +30711,14 @@ function App() {
     children: [
       /* @__PURE__ */ jsx_dev_runtime.jsxDEV("header", {
         children: [
-          /* @__PURE__ */ jsx_dev_runtime.jsxDEV("h1", {
+          /* @__PURE__ */ jsx_dev_runtime.jsxDEV("button", {
+            type: "button",
+            className: "brand-button",
+            onClick: () => setView({ name: "list" }),
             children: "Listen"
-          }, undefined, false, undefined, this),
-          /* @__PURE__ */ jsx_dev_runtime.jsxDEV("span", {
-            className: `live ${ws.status}`,
-            children: liveLabel
           }, undefined, false, undefined, this),
           /* @__PURE__ */ jsx_dev_runtime.jsxDEV("nav", {
             children: [
-              /* @__PURE__ */ jsx_dev_runtime.jsxDEV("button", {
-                type: "button",
-                onClick: () => setView({ name: "list" }),
-                children: "Inbox"
-              }, undefined, false, undefined, this),
               /* @__PURE__ */ jsx_dev_runtime.jsxDEV("button", {
                 type: "button",
                 onClick: () => setView({ name: "sources" }),
@@ -30748,17 +30755,22 @@ function App() {
           /* @__PURE__ */ jsx_dev_runtime.jsxDEV("h2", {
             children: "Settings"
           }, undefined, false, undefined, this),
-          /* @__PURE__ */ jsx_dev_runtime.jsxDEV("button", {
-            type: "button",
-            onClick: () => void json("/api/passkey-auth/logout", { method: "POST" }).then(refreshConfig),
-            children: "Logout"
-          }, undefined, false, undefined, this),
-          /* @__PURE__ */ jsx_dev_runtime.jsxDEV("button", {
-            type: "button",
-            className: "danger",
-            onClick: () => confirm("Delete the configured passkey?") && void json("/api/passkey-auth/passkey", { method: "DELETE" }).then(refreshConfig),
-            children: "Delete passkey"
-          }, undefined, false, undefined, this)
+          /* @__PURE__ */ jsx_dev_runtime.jsxDEV("div", {
+            className: "settings-actions",
+            children: [
+              /* @__PURE__ */ jsx_dev_runtime.jsxDEV("button", {
+                type: "button",
+                onClick: () => void json("/api/passkey-auth/logout", { method: "POST" }).then(refreshConfig),
+                children: "Logout"
+              }, undefined, false, undefined, this),
+              /* @__PURE__ */ jsx_dev_runtime.jsxDEV("button", {
+                type: "button",
+                className: "danger",
+                onClick: () => confirm("Delete the configured passkey?") && void json("/api/passkey-auth/passkey", { method: "DELETE" }).then(refreshConfig),
+                children: "Delete passkey"
+              }, undefined, false, undefined, this)
+            ]
+          }, undefined, true, undefined, this)
         ]
       }, undefined, true, undefined, this) : null
     ]
