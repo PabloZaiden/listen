@@ -6,6 +6,7 @@ import { startAuthentication, startRegistration } from "@simplewebauthn/browser"
 import type { NotificationDetail, NotificationListItem, PasskeyAuthStatusResponse, SourceResponse } from "@listen/contracts";
 import { appFetch } from "@listen/client-sdk";
 import { useWebSocket } from "./hooks/useWebSocket";
+import "./styles.css";
 
 interface AppConfig {
   appName: string;
