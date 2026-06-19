@@ -1,14 +1,16 @@
-await Bun.$`rm -rf ../../src/public/assets && mkdir -p ../../src/public/assets`;
+const workspaceDir = `${import.meta.dir}/..`;
+const sharedSrcDir = `${workspaceDir}/../../src`;
+const outDir = `${workspaceDir}/dist`;
+
+await Bun.$`rm -rf ${outDir}`.quiet();
+await Bun.$`mkdir -p ${outDir}`.quiet();
 
 const result = await Bun.build({
-  entrypoints: ["../../src/web/main.tsx"],
-  outdir: "../../src/public/assets",
+  entrypoints: [`${sharedSrcDir}/index.html`],
+  outdir: outDir,
+  minify: true,
+  sourcemap: "external",
   target: "browser",
-  naming: {
-    entry: "main.js",
-    chunk: "[name]-[hash].js",
-    asset: "[name].[ext]",
-  },
 });
 
 if (!result.success) {
