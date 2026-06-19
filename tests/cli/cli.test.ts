@@ -1,19 +1,60 @@
 import "./../setup";
-import { describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
-import { configPath, readConfig, runConfigCommand } from "../../src/cli/config";
+import { afterEach, describe, expect, test } from "bun:test";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { configPath, readConfig, readHomeConfig, runConfigCommand, setBinaryConfigPathForTests } from "../../src/cli/config";
 import { runNotifyCommand } from "../../src/cli/notify";
 
 describe("CLI", () => {
+  afterEach(() => {
+    setBinaryConfigPathForTests();
+  });
+
   test("config set/show/clear manages ~/.listen/config.json", async () => {
     const set = await runConfigCommand(["set-webhook-url", "https://listen.example.com/api/webhooks/source/token"]);
     expect(set.exitCode).toBe(0);
     expect(existsSync(configPath())).toBe(true);
     expect((await readConfig())?.webhookUrl).toBe("https://listen.example.com/api/webhooks/source/token");
+    expect((await readHomeConfig())?.webhookUrl).toBe("https://listen.example.com/api/webhooks/source/token");
     const show = await runConfigCommand(["show"]);
     expect(show.output).toContain("webhookUrl");
     const clear = await runConfigCommand(["clear"]);
     expect(clear.exitCode).toBe(0);
+  });
+
+  test("read config prefers listen.config.json beside the binary", async () => {
+    const binaryDir = mkdtempSync(join(tmpdir(), "listen-binary-"));
+    const binaryConfigPath = join(binaryDir, "listen.config.json");
+    setBinaryConfigPathForTests(binaryConfigPath);
+    try {
+      const set = await runConfigCommand(["set-webhook-url", "https://listen.example.com/api/webhooks/home/token"]);
+      expect(set.exitCode).toBe(0);
+      writeFileSync(binaryConfigPath, `${JSON.stringify({ webhookUrl: "https://listen.example.com/api/webhooks/binary/token" }, null, 2)}\n`, { mode: 0o600 });
+
+      expect((await readConfig())?.webhookUrl).toBe("https://listen.example.com/api/webhooks/binary/token");
+      expect((await readHomeConfig())?.webhookUrl).toBe("https://listen.example.com/api/webhooks/home/token");
+      const show = await runConfigCommand(["show"]);
+      expect(show.output).toContain("/binary/token");
+    } finally {
+      rmSync(binaryDir, { recursive: true, force: true });
+    }
+  });
+
+  test("config set writes to home even when binary config exists", async () => {
+    const binaryDir = mkdtempSync(join(tmpdir(), "listen-binary-"));
+    const binaryConfigPath = join(binaryDir, "listen.config.json");
+    setBinaryConfigPathForTests(binaryConfigPath);
+    try {
+      writeFileSync(binaryConfigPath, `${JSON.stringify({ webhookUrl: "https://listen.example.com/api/webhooks/binary/token" }, null, 2)}\n`, { mode: 0o600 });
+      const set = await runConfigCommand(["set-webhook-url", "https://listen.example.com/api/webhooks/home/token"]);
+
+      expect(set.exitCode).toBe(0);
+      expect((await readConfig())?.webhookUrl).toBe("https://listen.example.com/api/webhooks/binary/token");
+      expect((await readHomeConfig())?.webhookUrl).toBe("https://listen.example.com/api/webhooks/home/token");
+    } finally {
+      rmSync(binaryDir, { recursive: true, force: true });
+    }
   });
 
   test("missing notify fields fail", async () => {

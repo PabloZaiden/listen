@@ -1,6 +1,6 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { chmodSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { CliCommandResult } from "./runtime";
 
 export interface ListenCliConfig {
@@ -23,6 +23,16 @@ export function configPath(): string {
   return join(configDir(), "config.json");
 }
 
+let binaryConfigPathForTests: string | undefined;
+
+export function binaryConfigPath(): string {
+  return binaryConfigPathForTests ?? join(dirname(process.execPath), "listen.config.json");
+}
+
+export function setBinaryConfigPathForTests(path?: string): void {
+  binaryConfigPathForTests = path;
+}
+
 export function validateWebhookUrl(value: string): string {
   let url: URL;
   try {
@@ -36,13 +46,32 @@ export function validateWebhookUrl(value: string): string {
   return url.toString();
 }
 
+async function readConfigFile(path: string): Promise<ListenCliConfig | undefined> {
+  const parsed = JSON.parse(await readFile(path, "utf8")) as Partial<ListenCliConfig>;
+  if (!parsed.webhookUrl) {
+    return undefined;
+  }
+  return { webhookUrl: validateWebhookUrl(parsed.webhookUrl) };
+}
+
 export async function readConfig(): Promise<ListenCliConfig | undefined> {
-  try {
-    const parsed = JSON.parse(await readFile(configPath(), "utf8")) as Partial<ListenCliConfig>;
-    if (!parsed.webhookUrl) {
-      return undefined;
+  const paths = [binaryConfigPath(), configPath()];
+  for (const path of paths) {
+    try {
+      return await readConfigFile(path);
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+        continue;
+      }
+      throw error;
     }
-    return { webhookUrl: validateWebhookUrl(parsed.webhookUrl) };
+  }
+  return undefined;
+}
+
+export async function readHomeConfig(): Promise<ListenCliConfig | undefined> {
+  try {
+    return await readConfigFile(configPath());
   } catch (error) {
     if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
       return undefined;
