@@ -50,6 +50,12 @@ describe("integration", () => {
       expect(assetResponse.headers.get("content-type")).toContain("javascript");
       expectSecurityHeaders(assetResponse);
       expect(await assetResponse.text()).not.toContain("<title>Listen</title>");
+
+      const stylesheetResponse = await fetch(`http://127.0.0.1:${server.port}/web/styles.css`, { headers: { accept: "text/css" } });
+      expect(stylesheetResponse.status).toBe(200);
+      expect(stylesheetResponse.headers.get("content-type")).toContain("text/css");
+      expectSecurityHeaders(stylesheetResponse);
+      expect(await stylesheetResponse.text()).not.toContain("<title>Listen</title>");
     } finally {
       server.stop(true);
     }
