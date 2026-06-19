@@ -276,8 +276,8 @@ function NotificationList({
       </select>
       <div className="stack">
         {notifications.map((notification) => (
-          <article className={`notification ${notification.openedAt ? "read" : "unread"}`} key={notification.id}>
-            {notification.icon ? <img src={notification.icon} alt="" /> : <div className="placeholder-icon" />}
+          <article className={`notification ${notification.openedAt ? "read" : "unread"}${notification.icon ? "" : " no-icon"}`} key={notification.id}>
+            {notification.icon ? <img src={notification.icon} alt="" /> : null}
             <button type="button" className="link-button" onClick={() => openDetail(notification.id)}>
               <strong>{notification.title}</strong>
               <span>{notification.shortDescription}</span>
@@ -327,7 +327,7 @@ function NotificationDetailView({ id, back }: { id: string; back: () => void }):
   return (
     <section className="panel detail">
       <div className="detail-summary">
-        {detail.icon ? <img className="detail-icon" src={detail.icon} alt="" /> : <div className="detail-icon placeholder-icon" />}
+        {detail.icon ? <img className="detail-icon" src={detail.icon} alt="" /> : null}
         <div>
           <h2>{detail.title}</h2>
           <p>{detail.shortDescription}</p>
