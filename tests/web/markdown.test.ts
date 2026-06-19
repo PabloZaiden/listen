@@ -11,4 +11,10 @@ describe("markdown display normalization", () => {
 
     expect(normalizeMarkdownForDisplay(markdown)).toBe(markdown);
   });
+
+  test("keeps markdown with carriage return newlines unchanged", () => {
+    const markdown = "Intro\r\r- Keep literal \\n text";
+
+    expect(normalizeMarkdownForDisplay(markdown)).toBe(markdown);
+  });
 });

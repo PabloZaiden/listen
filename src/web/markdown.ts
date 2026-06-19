@@ -1,5 +1,5 @@
 export function normalizeMarkdownForDisplay(markdown: string): string {
-  if (markdown.includes("\n")) {
+  if (/[\r\n]/.test(markdown)) {
     return markdown;
   }
 

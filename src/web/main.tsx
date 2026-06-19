@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -504,6 +504,7 @@ function App(): React.ReactElement {
   const [notifications, setNotifications] = useState<NotificationListItem[]>([]);
   const [sourceId, setSourceId] = useState("");
   const [view, setView] = useState<View>(initialView);
+  const homeRefreshTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const authenticated = Boolean(config?.passkeyAuth.authenticated);
   const ws = useWebSocket(authenticated ? "/api/ws" : undefined);
@@ -517,11 +518,21 @@ function App(): React.ReactElement {
     await Promise.all([refreshSources(), refreshNotifications()]);
   }, [refreshSources, refreshNotifications]);
 
+  const queueHomeRefresh = useCallback(() => {
+    if (homeRefreshTimer.current) {
+      return;
+    }
+    homeRefreshTimer.current = setTimeout(() => {
+      homeRefreshTimer.current = undefined;
+      void refreshHome();
+    }, 0);
+  }, [refreshHome]);
+
   const showHome = useCallback(() => {
     setView({ name: "list" });
     window.history.replaceState(null, "", window.location.pathname);
-    void refreshHome();
-  }, [refreshHome]);
+    queueHomeRefresh();
+  }, [queueHomeRefresh]);
 
   useEffect(() => {
     if (authenticated) {
@@ -536,11 +547,11 @@ function App(): React.ReactElement {
 
     const refreshWhenVisible = (): void => {
       if (document.visibilityState === "visible") {
-        void refreshHome();
+        queueHomeRefresh();
       }
     };
     const refreshWhenFocused = (): void => {
-      void refreshHome();
+      queueHomeRefresh();
     };
 
     window.addEventListener("focus", refreshWhenFocused);
@@ -551,8 +562,12 @@ function App(): React.ReactElement {
       window.removeEventListener("focus", refreshWhenFocused);
       window.removeEventListener("pageshow", refreshWhenFocused);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
+      if (homeRefreshTimer.current) {
+        clearTimeout(homeRefreshTimer.current);
+        homeRefreshTimer.current = undefined;
+      }
     };
-  }, [authenticated, refreshHome]);
+  }, [authenticated, queueHomeRefresh]);
 
   useEffect(() => {
     const event = ws.lastEvent as RealtimeEvent | undefined;
