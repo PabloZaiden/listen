@@ -4,6 +4,7 @@ import { handleNotifications } from "./notifications";
 import { handlePasskeyAuth } from "./passkey-auth";
 import { requirePasskeyAuth } from "./passkey-guard";
 import { checkSameOrigin } from "./same-origin-guard";
+import { handleServerControl } from "./server-control";
 import { handleSources } from "./sources";
 import { handleWebhook } from "./webhooks";
 import { healthRoute } from "./health";
@@ -83,6 +84,11 @@ export async function handleApiRequest(req: Request, config: ServerConfig, serve
     const protectedPasskeyRoute = publicPasskeyRoute ?? await handlePasskeyAuth(req, config);
     if (protectedPasskeyRoute) {
       return protectedPasskeyRoute;
+    }
+
+    const serverControlRoute = handleServerControl(req);
+    if (serverControlRoute) {
+      return serverControlRoute;
     }
 
     const sourceRoute = await handleSources(req);
