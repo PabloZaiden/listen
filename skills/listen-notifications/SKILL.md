@@ -27,6 +27,8 @@ Use this skill to send a push notification to a human through the `listen` CLI. 
 
 ## Command Patterns
 
+When sending text through a shell, quote every textual argument carefully, including `--title`, `--description`, and `--markdown`. Characters such as `$`, backticks, backslashes, and `!` can be interpreted or expanded by shells like Bash or Zsh before `listen` receives them. Prefer single quotes for literal text, or send multi-line/detail content through `printf` or `--markdown-file -` when the message may contain shell-sensitive characters.
+
 Send a simple notification:
 
 ```bash
