@@ -28,7 +28,7 @@ export async function handleWebhook(req: Request): Promise<Response | undefined>
 
   const globalRateLimit = checkGlobalWebhookRateLimit();
   if (!globalRateLimit.allowed) {
-    log.warn("Global webhook rate limit exceeded");
+    log.debug("Global webhook rate limit exceeded");
     return rateLimitedResponse(globalRateLimit);
   }
 
@@ -49,7 +49,7 @@ export async function handleWebhook(req: Request): Promise<Response | undefined>
   }
   const sourceRateLimit = checkSourceWebhookRateLimit(source.id);
   if (!sourceRateLimit.allowed) {
-    log.warn("Source webhook rate limit exceeded", { sourceId: source.id });
+    log.debug("Source webhook rate limit exceeded", { sourceId: source.id });
     return rateLimitedResponse(sourceRateLimit);
   }
 

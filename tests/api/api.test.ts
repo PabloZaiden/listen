@@ -5,8 +5,8 @@ import { createFetchHandler } from "../../src/server";
 import { readServerConfig, type ServerConfig } from "../../src/core/server-config";
 import { handleServerControl, scheduleServerShutdown } from "../../src/api/server-control";
 import { setBrowserPushSenderForTests } from "../../src/core/browser-push";
-import { getLogLevel } from "../../src/core/logger";
-import { setWebhookRateLimitOptionsForTests } from "../../src/core/webhook-rate-limit";
+import { createLogger, getLogLevel } from "../../src/core/logger";
+import { resetWebhookRateLimitForTests, setWebhookRateLimitOptionsForTests } from "../../src/core/webhook-rate-limit";
 import { getBrowserPushSubscriptionByEndpoint } from "../../src/persistence/browser-push";
 
 async function request(path: string, init?: RequestInit, config?: Partial<ServerConfig>): Promise<Response> {
@@ -310,6 +310,44 @@ describe("API", () => {
 
     expect((await webhook(created.webhookUrl, init())).status).toBe(201);
     await expectRateLimited(await webhook(created.webhookUrl, init()));
+  });
+
+  test("webhook rate limit hits log at debug instead of warn", async () => {
+    const webhookLog = createLogger("api:webhooks");
+    const originalWarn = webhookLog.warn;
+    const originalDebug = webhookLog.debug;
+    const warnCalls: unknown[][] = [];
+    const debugCalls: unknown[][] = [];
+    webhookLog.warn = ((...args: unknown[]) => {
+      warnCalls.push(args);
+    }) as typeof webhookLog.warn;
+    webhookLog.debug = ((...args: unknown[]) => {
+      debugCalls.push(args);
+    }) as typeof webhookLog.debug;
+
+    try {
+      const init = () => ({
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: "A", shortDescription: "B", markdownContent: "C" }),
+      });
+
+      setWebhookRateLimitOptionsForTests({ globalLimit: 0, sourceLimit: 100 });
+      await expectRateLimited(await request("/api/webhooks/missing/token", init()));
+      expect(warnCalls).toHaveLength(0);
+      expect(debugCalls.some((call) => call[0] === "Global webhook rate limit exceeded")).toBe(true);
+
+      debugCalls.length = 0;
+      setWebhookRateLimitOptionsForTests({ globalLimit: 100, sourceLimit: 0 });
+      const created = await createSource();
+      await expectRateLimited(await webhook(created.webhookUrl, init()));
+      expect(warnCalls).toHaveLength(0);
+      expect(debugCalls.some((call) => call[0] === "Source webhook rate limit exceeded")).toBe(true);
+    } finally {
+      resetWebhookRateLimitForTests();
+      webhookLog.warn = originalWarn;
+      webhookLog.debug = originalDebug;
+    }
   });
 
   test("webhook rejects invalid token and disabled source", async () => {

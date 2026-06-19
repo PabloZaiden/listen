@@ -44,6 +44,12 @@ describe("integration", () => {
       expect(response.headers.get("content-type")).toContain("text/html");
       expectSecurityHeaders(response);
       expect(await response.text()).toContain("<title>Listen</title>");
+
+      const assetResponse = await fetch(`http://127.0.0.1:${server.port}/web/main.tsx`, { headers: { accept: "application/javascript" } });
+      expect(assetResponse.status).toBe(200);
+      expect(assetResponse.headers.get("content-type")).toContain("javascript");
+      expectSecurityHeaders(assetResponse);
+      expect(await assetResponse.text()).not.toContain("<title>Listen</title>");
     } finally {
       server.stop(true);
     }
