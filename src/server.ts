@@ -8,16 +8,32 @@ import { readServerConfig, type ServerConfig } from "./core/server-config";
 import { createLogger } from "./core/logger";
 import { getLogLevelPreference } from "./persistence/preferences";
 import { isLogLevelFromEnv, setLogLevel } from "./core/logger";
+import { withSecurityHeaders } from "./core/security-headers";
+import { isServerDevelopmentMode } from "./core/runtime-mode";
 import webIndex from "./index.html";
 
 const log = createLogger("server");
 const SERVICE_WORKER_PATH = "/service-worker";
 const WEB_MANIFEST_PATH = "/manifest.webmanifest";
+const SOURCE_WEB_MAIN_PATH = "/web/main.tsx";
+const SOURCE_WEB_STYLES_PATH = "/web/styles.css";
 const WEB_ICON_PATHS = new Set([
   "/icons/listen-192.png",
   "/icons/listen-512.png",
   "/icons/apple-touch-icon.png",
 ]);
+
+interface FetchableHtmlBundle {
+  fetch?: (req: Request) => Response | Promise<Response>;
+}
+
+interface SourceWebBuild {
+  index: Bun.BuildArtifact;
+  assets: Map<string, Bun.BuildArtifact>;
+}
+
+const sourceWebBundle = webIndex as typeof webIndex & FetchableHtmlBundle;
+let sourceWebBuildPromise: Promise<SourceWebBuild> | undefined;
 
 function getConfiguredWebDistDir(): string | undefined {
   const configuredDir = process.env["LISTEN_WEB_DIST_DIR"]?.trim();
@@ -94,6 +110,78 @@ async function serveSourceWebAsset(pathname: string): Promise<Response | undefin
   return undefined;
 }
 
+function responseFromBuildArtifact(artifact: Bun.BuildArtifact): Response {
+  return new Response(artifact, { headers: { "content-type": artifact.type } });
+}
+
+function normalizeBuildOutputPath(outputPath: string): string {
+  const withoutCurrentDir = outputPath.replace(/^\.\//, "");
+  return withoutCurrentDir.startsWith("/") ? withoutCurrentDir : `/${withoutCurrentDir}`;
+}
+
+async function buildSourceWebApp(): Promise<SourceWebBuild> {
+  const result = await Bun.build({
+    entrypoints: [webIndex.index],
+    publicPath: "/",
+    target: "browser",
+  });
+  if (!result.success) {
+    throw new Error(`Source web app build failed: ${result.logs.map((entry) => entry.message).join("; ")}`);
+  }
+
+  const assets = new Map<string, Bun.BuildArtifact>();
+  let index: Bun.BuildArtifact | undefined;
+  let mainScript: Bun.BuildArtifact | undefined;
+  let stylesheet: Bun.BuildArtifact | undefined;
+  for (const output of result.outputs) {
+    const outputPath = normalizeBuildOutputPath(output.path);
+    if (outputPath === "/index.html") {
+      index = output;
+    } else {
+      assets.set(outputPath, output);
+      if (!mainScript && output.type.startsWith("text/javascript")) {
+        mainScript = output;
+      }
+      if (!stylesheet && output.type.startsWith("text/css")) {
+        stylesheet = output;
+      }
+    }
+  }
+
+  if (!index) {
+    throw new Error("Source web app build did not produce index.html");
+  }
+  if (mainScript) {
+    assets.set(SOURCE_WEB_MAIN_PATH, mainScript);
+  }
+  if (stylesheet) {
+    assets.set(SOURCE_WEB_STYLES_PATH, stylesheet);
+  }
+  return { index, assets };
+}
+
+function getSourceWebBuild(): Promise<SourceWebBuild> {
+  sourceWebBuildPromise ??= buildSourceWebApp();
+  return sourceWebBuildPromise;
+}
+
+async function serveSourceWebBundle(req: Request, pathname: string): Promise<Response> {
+  const fetch = sourceWebBundle.fetch;
+  if (fetch) {
+    return fetch(req);
+  }
+
+  const build = await getSourceWebBuild();
+  const asset = build.assets.get(pathname);
+  if (asset) {
+    return responseFromBuildArtifact(asset);
+  }
+  if (!acceptsHtml(req) || looksLikeFileAsset(pathname)) {
+    return new Response("Not found", { status: 404 });
+  }
+  return responseFromBuildArtifact(build.index);
+}
+
 async function serveDistWebAsset(distDir: string, pathname: string): Promise<Response | undefined> {
   if (pathname === SERVICE_WORKER_PATH) {
     const file = Bun.file(`${distDir}/service-worker`);
@@ -110,7 +198,7 @@ async function serveDistWebAsset(distDir: string, pathname: string): Promise<Res
   return undefined;
 }
 
-export async function serveWebApp(req: Request): Promise<Response> {
+async function serveWebAppResponse(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const decodedPathname = decodeWebPathname(url.pathname);
   if (decodedPathname === undefined) {
@@ -120,7 +208,7 @@ export async function serveWebApp(req: Request): Promise<Response> {
   const distDir = getConfiguredWebDistDir();
   if (!distDir) {
     return await serveSourceWebAsset(decodedPathname)
-      ?? new Response(webIndex.index, { headers: { "content-type": "text/html; charset=utf-8" } });
+      ?? serveSourceWebBundle(req, decodedPathname);
   }
 
   const distAsset = await serveDistWebAsset(distDir, decodedPathname);
@@ -150,8 +238,8 @@ export async function serveWebApp(req: Request): Promise<Response> {
   return new Response("Configured web dist is missing index.html.", { status: 500 });
 }
 
-export function getWebAppRoute(): typeof webIndex | typeof serveWebApp {
-  return getConfiguredWebDistDir() ? serveWebApp : webIndex;
+export async function serveWebApp(req: Request): Promise<Response> {
+  return withSecurityHeaders(await serveWebAppResponse(req));
 }
 
 export function createFetchHandler(config: ServerConfig): (req: Request, server?: Server<WebSocketData>) => Promise<Response | undefined> {
@@ -185,9 +273,9 @@ export function startServer(config = readServerConfig()): Server<WebSocketData> 
       [SERVICE_WORKER_PATH]: (req) => serveWebApp(req),
       [WEB_MANIFEST_PATH]: (req) => serveWebApp(req),
       "/icons/*": (req) => serveWebApp(req),
-      "/*": getWebAppRoute(),
+      "/*": (req) => serveWebApp(req),
     },
     websocket: websocketHandlers,
-    development: process.env["NODE_ENV"] !== "production",
+    development: isServerDevelopmentMode(),
   });
 }

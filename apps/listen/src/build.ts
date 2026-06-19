@@ -10,6 +10,9 @@ const result = await Bun.build({
   target: "bun",
   minify: true,
   sourcemap: "external",
+  define: {
+    LISTEN_BINARY_BUILD: "true",
+  },
   compile: target ? { target: target as "bun-linux-x64", outfile } : { outfile },
 });
 
