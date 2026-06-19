@@ -50,7 +50,7 @@ Use Bun APIs and scripts. Do not add Node-only tooling. Use `bun:sqlite` for SQL
 
 ## Testing
 
-Use `bun test` through repository scripts. Prefer API/integration tests over brittle frontend component tests. Do not add Playwright tests; use Playwright only for manual UI validation when needed.
+Use `bun test` through repository scripts. Prefer API/integration tests over brittle frontend component tests. Do not add frontend tests that only reimplement or assert static component markup; cover behavior, data flow, contracts, or integration seams instead. Do not add Playwright tests; use Playwright only for manual UI validation when needed.
 
 ## Database Migrations
 

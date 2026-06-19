@@ -9,7 +9,7 @@ import { appFetch } from "@listen/client-sdk";
 import { BrowserPushSettings } from "./browserPushSettings";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { normalizeMarkdownForDisplay } from "./markdown";
-import { VersionLegend } from "./versionLegend";
+import { LISTEN_VERSION } from "../version";
 import "./styles.css";
 
 interface AppConfig {
@@ -497,6 +497,10 @@ function SettingsView({ refreshConfig }: { refreshConfig: () => Promise<void> })
       </div>
     </section>
   );
+}
+
+function VersionLegend(): React.ReactElement {
+  return <footer className="version-legend">listen {LISTEN_VERSION}</footer>;
 }
 
 function App(): React.ReactElement {
