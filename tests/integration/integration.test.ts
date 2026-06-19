@@ -67,6 +67,7 @@ describe("integration", () => {
     mkdirSync(distDir);
     writeFileSync(join(distDir, "index.html"), "<!doctype html><title>Listen dist</title><main>app shell</main>");
     writeFileSync(join(distDir, "app.js"), "console.log('listen');");
+    writeFileSync(join(distDir, "download.unknown"), "binary");
     writeFileSync(join(distDir, "service-worker"), "self.addEventListener('push', () => {});");
     writeFileSync(join(distDir, "manifest.webmanifest"), JSON.stringify({ name: "Listen", icons: [{ src: "/icons/listen-192.png" }] }));
     mkdirSync(join(distDir, "icons"));
@@ -115,10 +116,18 @@ describe("integration", () => {
 
       const missingAssetResponse = await fetch(`${base}/missing.js`, { headers: { accept: "application/javascript" } });
       expect(missingAssetResponse.status).toBe(404);
+      expect(missingAssetResponse.headers.get("content-type")).toContain("text/plain");
       expectSecurityHeaders(missingAssetResponse);
+
+      const unknownAssetResponse = await fetch(`${base}/download.unknown`, { headers: { accept: "*/*" } });
+      expect(unknownAssetResponse.status).toBe(200);
+      expect(unknownAssetResponse.headers.get("content-type")).toBe("application/octet-stream");
+      expectSecurityHeaders(unknownAssetResponse);
+      expect(await unknownAssetResponse.text()).toBe("binary");
 
       const malformedResponse = await fetch(`${base}/%E0%A4%A`, { headers: { accept: "text/html" } });
       expect(malformedResponse.status).toBe(400);
+      expect(malformedResponse.headers.get("content-type")).toContain("text/plain");
       expectSecurityHeaders(malformedResponse);
 
       const traversalResponse = await fetch(`${base}/%2e%2e/secret.txt`, { headers: { accept: "text/html" } });
