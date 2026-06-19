@@ -1,3 +1,27 @@
+function parseUnreadCount(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
+}
+
+async function updateAppBadgeFromPush(unreadCount: number | undefined): Promise<void> {
+  if (unreadCount === undefined) {
+    return;
+  }
+
+  try {
+    if (unreadCount > 0) {
+      await navigator.setAppBadge?.(unreadCount);
+      return;
+    }
+    if (navigator.clearAppBadge) {
+      await navigator.clearAppBadge();
+      return;
+    }
+    await navigator.setAppBadge?.(0);
+  } catch (error) {
+    console.warn("Could not update app badge from browser push", { error });
+  }
+}
+
 self.addEventListener("push", (event) => {
   let rawPayload;
   try {
@@ -12,6 +36,7 @@ self.addEventListener("push", (event) => {
   const rawIcon = rawPayload?.icon;
   const rawBadge = rawPayload?.badge;
   const rawTag = rawPayload?.tag;
+  const rawUnreadCount = rawPayload?.unreadCount;
   const rawData = rawPayload?.data;
   const rawUrl = rawData?.url;
   const url = typeof rawUrl === "string" && rawUrl.trim().length > 0 ? rawUrl : undefined;
@@ -25,7 +50,10 @@ self.addEventListener("push", (event) => {
     data: url ? { url } : {},
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(Promise.all([
+    updateAppBadgeFromPush(parseUnreadCount(rawUnreadCount)),
+    self.registration.showNotification(title, options),
+  ]).then(() => undefined));
 });
 
 self.addEventListener("notificationclick", (event) => {

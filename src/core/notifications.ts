@@ -6,6 +6,7 @@ import {
   insertNotification,
   listNotifications as listPersistedNotifications,
   markNotificationOpened,
+  countUnreadNotifications,
   type PersistedNotification,
 } from "../persistence/notifications";
 import { sendBrowserPushNotification } from "./browser-push";
@@ -27,6 +28,7 @@ export interface ListNotificationsOptions {
 
 export interface ListNotificationsResult {
   notifications: NotificationListItem[];
+  unreadCount: number;
   pagination: {
     limit: number;
     offset: number;
@@ -76,12 +78,17 @@ export function createNotificationFromWebhook(
   };
   insertNotification(notification);
   const item = toNotificationListItem(notification);
-  emit({ type: "notification.created", notification: item });
+  const unreadCount = getUnreadNotificationCount();
+  emit({ type: "notification.created", notification: item, unreadCount });
   log.info("Notification created", { notificationId: item.id, sourceId: item.sourceId, source: item.source });
-  void sendBrowserPushNotification(item, options.publicOrigin).catch((error) => {
+  void sendBrowserPushNotification(item, unreadCount, options.publicOrigin).catch((error) => {
     log.warn("Browser push notification fanout failed", { notificationId: item.id, sourceId: item.sourceId, ...errorLogFields(error) });
   });
   return item;
+}
+
+export function getUnreadNotificationCount(): number {
+  return countUnreadNotifications();
 }
 
 export function listNotifications(options: ListNotificationsOptions): ListNotificationsResult {
@@ -89,6 +96,7 @@ export function listNotifications(options: ListNotificationsOptions): ListNotifi
   const nextOffset = options.offset + options.limit < result.total ? options.offset + options.limit : undefined;
   return {
     notifications: result.notifications.map(toNotificationListItem),
+    unreadCount: getUnreadNotificationCount(),
     pagination: {
       limit: options.limit,
       offset: options.offset,
@@ -110,7 +118,7 @@ export function openNotification(id: string): NotificationDetail | undefined {
     return undefined;
   }
   if (!existing.openedAt) {
-    emit({ type: "notification.opened", notification: toNotificationListItem(opened) });
+    emit({ type: "notification.opened", notification: toNotificationListItem(opened), unreadCount: getUnreadNotificationCount() });
     log.info("Notification opened", { notificationId: id, sourceId: opened.sourceId });
   }
   return toNotificationDetail(opened);
@@ -124,7 +132,7 @@ export function deleteNotification(id: string): boolean {
   }
   const deleted = deleteNotificationById(id);
   if (deleted) {
-    emit({ type: "notification.deleted", notificationId: id, sourceId: existing.sourceId });
+    emit({ type: "notification.deleted", notificationId: id, sourceId: existing.sourceId, unreadCount: getUnreadNotificationCount() });
     log.info("Notification deleted", { notificationId: id, sourceId: existing.sourceId });
   }
   return deleted;
@@ -132,7 +140,7 @@ export function deleteNotification(id: string): boolean {
 
 export function deleteNotifications(sourceId?: string): number {
   const deletedCount = deletePersistedNotifications(sourceId);
-  emit({ type: "notifications.deleted", sourceId, deletedCount });
+  emit({ type: "notifications.deleted", sourceId, deletedCount, unreadCount: getUnreadNotificationCount() });
   log.info("Notifications deleted", { sourceId, deletedCount });
   return deletedCount;
 }

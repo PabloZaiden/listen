@@ -90,6 +90,11 @@ export function listNotifications(options: ListNotificationOptions): { notificat
   return { notifications: rows.map(mapNotification), total: totalRow.count };
 }
 
+export function countUnreadNotifications(): number {
+  const row = getDatabase().query("SELECT COUNT(*) as count FROM notifications WHERE opened_at IS NULL").get() as { count: number };
+  return row.count;
+}
+
 export function getNotificationById(id: string): PersistedNotification | undefined {
   const row = getDatabase().query("SELECT * FROM notifications WHERE id = $id").get({ id }) as NotificationRow | null;
   return row ? mapNotification(row) : undefined;

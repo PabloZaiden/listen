@@ -6,6 +6,7 @@ import { startAuthentication, startRegistration } from "@simplewebauthn/browser"
 import type { LogLevelPreferenceResponse, NotificationDetail, NotificationListItem, PasskeyAuthStatusResponse, SourceResponse } from "@listen/contracts";
 import type { LogLevelName } from "@listen/shared";
 import { appFetch } from "@listen/client-sdk";
+import { clearAppBadge, updateAppBadge } from "./appBadge";
 import { BrowserPushSettings } from "./browserPushSettings";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { normalizeMarkdownForDisplay } from "./markdown";
@@ -19,10 +20,10 @@ interface AppConfig {
 
 type View = { name: "list" } | { name: "detail"; id: string } | { name: "sources" } | { name: "settings" };
 type RealtimeEvent =
-  | { type: "notification.created"; notification: NotificationListItem }
-  | { type: "notification.opened"; notification: NotificationListItem }
-  | { type: "notification.deleted"; notificationId: string; sourceId?: string }
-  | { type: "notifications.deleted"; sourceId?: string; deletedCount: number }
+  | { type: "notification.created"; notification: NotificationListItem; unreadCount: number }
+  | { type: "notification.opened"; notification: NotificationListItem; unreadCount: number }
+  | { type: "notification.deleted"; notificationId: string; sourceId?: string; unreadCount: number }
+  | { type: "notifications.deleted"; sourceId?: string; deletedCount: number; unreadCount: number }
   | { type: "source.created"; source: SourceResponse }
   | { type: "source.updated"; source: SourceResponse }
   | { type: "source.deleted"; sourceId: string }
@@ -30,6 +31,11 @@ type RealtimeEvent =
   | { type: "pong" };
 
 const KILL_SERVER_COUNTDOWN_SECONDS = 15;
+
+interface ListNotificationsResponse {
+  notifications: NotificationListItem[];
+  unreadCount: number;
+}
 
 function initialView(): View {
   const notificationId = new URLSearchParams(window.location.search).get("notificationId");
@@ -516,7 +522,9 @@ function App(): React.ReactElement {
 
   const refreshNotifications = useCallback(async () => {
     const query = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : "";
-    setNotifications((await json<{ notifications: NotificationListItem[] }>(`/api/notifications${query}`)).notifications);
+    const response = await json<ListNotificationsResponse>(`/api/notifications${query}`);
+    setNotifications(response.notifications);
+    await updateAppBadge(response.unreadCount);
   }, [sourceId]);
 
   const refreshHome = useCallback(async () => {
@@ -542,6 +550,8 @@ function App(): React.ReactElement {
   useEffect(() => {
     if (authenticated) {
       void refreshHome();
+    } else {
+      void clearAppBadge();
     }
   }, [authenticated, refreshHome]);
 
@@ -581,12 +591,16 @@ function App(): React.ReactElement {
     }
     if (event.type === "notification.created") {
       setNotifications((items) => (!sourceId || event.notification.sourceId === sourceId) ? [event.notification, ...items] : items);
+      void updateAppBadge(event.unreadCount);
     } else if (event.type === "notification.opened") {
       setNotifications((items) => items.map((item) => item.id === event.notification.id ? event.notification : item));
+      void updateAppBadge(event.unreadCount);
     } else if (event.type === "notification.deleted") {
       setNotifications((items) => items.filter((item) => item.id !== event.notificationId));
+      void updateAppBadge(event.unreadCount);
     } else if (event.type === "notifications.deleted") {
       setNotifications((items) => event.sourceId ? items.filter((item) => item.sourceId !== event.sourceId) : []);
+      void updateAppBadge(event.unreadCount);
     } else if (event.type.startsWith("source.")) {
       void refreshSources();
     }
