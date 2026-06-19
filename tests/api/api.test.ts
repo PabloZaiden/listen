@@ -45,6 +45,23 @@ function browserPushSubscription(endpoint: string): unknown {
   };
 }
 
+async function waitForExpectation(assertion: () => void, timeoutMs = 1_000): Promise<void> {
+  const startedAt = Date.now();
+  let lastError: unknown;
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      assertion();
+      return;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+  if (lastError) {
+    throw lastError;
+  }
+}
+
 describe("API", () => {
   test("health returns ok", async () => {
     const response = await request("/api/health");
@@ -339,9 +356,11 @@ describe("API", () => {
     });
     await attempted;
 
-    expect(getBrowserPushSubscriptionByEndpoint(goneEndpoint)).toBeUndefined();
-    const temporarySubscription = getBrowserPushSubscriptionByEndpoint(temporaryEndpoint);
-    expect(temporarySubscription?.failureCount).toBe(1);
-    expect(temporarySubscription?.nextAttemptAt).toBeTruthy();
+    await waitForExpectation(() => {
+      expect(getBrowserPushSubscriptionByEndpoint(goneEndpoint)).toBeUndefined();
+      const temporarySubscription = getBrowserPushSubscriptionByEndpoint(temporaryEndpoint);
+      expect(temporarySubscription?.failureCount).toBe(1);
+      expect(temporarySubscription?.nextAttemptAt).toBeTruthy();
+    });
   });
 });

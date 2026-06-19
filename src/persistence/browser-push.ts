@@ -75,7 +75,7 @@ export function getBrowserPushSubscriptionByEndpoint(endpoint: string): Persiste
   return row ? mapSubscription(row) : undefined;
 }
 
-export function insertBrowserPushSubscription(subscription: PersistedBrowserPushSubscription): void {
+export function upsertBrowserPushSubscription(subscription: PersistedBrowserPushSubscription): PersistedBrowserPushSubscription {
   getDatabase().query(`
     INSERT INTO browser_push_subscriptions (
       id, endpoint, p256dh, auth, expiration_time, user_agent, created_at, updated_at,
@@ -85,6 +85,15 @@ export function insertBrowserPushSubscription(subscription: PersistedBrowserPush
       $id, $endpoint, $p256dh, $auth, $expirationTime, $userAgent, $createdAt, $updatedAt,
       $lastSuccessAt, $lastFailureAt, $failureCount, $nextAttemptAt, $disabledAt
     )
+    ON CONFLICT(endpoint) DO UPDATE SET
+      p256dh = $p256dh,
+      auth = $auth,
+      expiration_time = $expirationTime,
+      user_agent = $userAgent,
+      updated_at = $updatedAt,
+      failure_count = 0,
+      next_attempt_at = NULL,
+      disabled_at = NULL
   `).run({
     id: subscription.id,
     endpoint: subscription.endpoint,
@@ -100,42 +109,7 @@ export function insertBrowserPushSubscription(subscription: PersistedBrowserPush
     nextAttemptAt: subscription.nextAttemptAt ?? null,
     disabledAt: subscription.disabledAt ?? null,
   });
-}
-
-export function updateBrowserPushSubscriptionByEndpoint(
-  endpoint: string,
-  fields: Pick<PersistedBrowserPushSubscription, "p256dh" | "auth" | "expirationTime" | "userAgent" | "updatedAt">,
-): PersistedBrowserPushSubscription | undefined {
-  getDatabase().query(`
-    UPDATE browser_push_subscriptions
-    SET
-      p256dh = $p256dh,
-      auth = $auth,
-      expiration_time = $expirationTime,
-      user_agent = $userAgent,
-      updated_at = $updatedAt,
-      failure_count = 0,
-      next_attempt_at = NULL,
-      disabled_at = NULL
-    WHERE endpoint = $endpoint
-  `).run({
-    endpoint,
-    p256dh: fields.p256dh,
-    auth: fields.auth,
-    expirationTime: fields.expirationTime ?? null,
-    userAgent: fields.userAgent ?? null,
-    updatedAt: fields.updatedAt,
-  });
-  return getBrowserPushSubscriptionByEndpoint(endpoint);
-}
-
-export function upsertBrowserPushSubscription(subscription: PersistedBrowserPushSubscription): PersistedBrowserPushSubscription {
-  const existing = getBrowserPushSubscriptionByEndpoint(subscription.endpoint);
-  if (existing) {
-    return updateBrowserPushSubscriptionByEndpoint(subscription.endpoint, subscription) ?? subscription;
-  }
-  insertBrowserPushSubscription(subscription);
-  return subscription;
+  return getBrowserPushSubscriptionByEndpoint(subscription.endpoint) ?? subscription;
 }
 
 export function listActiveBrowserPushSubscriptions(nowMs: number, nowIso: string): PersistedBrowserPushSubscription[] {

@@ -40,9 +40,8 @@ interface BrowserPushPayload {
   tag: string;
 }
 
-interface WebPushError {
+interface WebPushStatusError {
   statusCode?: number;
-  body?: string;
 }
 
 function nowIso(): string {
@@ -117,7 +116,7 @@ function toWebPushSubscription(subscription: PersistedBrowserPushSubscription): 
 
 function getFailureStatusCode(error: unknown): number | undefined {
   return typeof error === "object" && error !== null && "statusCode" in error
-    ? (error as WebPushError).statusCode
+    ? (error as WebPushStatusError).statusCode
     : undefined;
 }
 
@@ -162,7 +161,7 @@ async function sendOneBrowserPush(subscription: PersistedBrowserPushSubscription
     }
     const failedAt = new Date();
     markBrowserPushSubscriptionFailed(subscription.endpoint, failedAt.toISOString(), nextFailureAttempt(subscription.failureCount, failedAt));
-    log.warn("Browser push delivery failed", { statusCode: getFailureStatusCode(error), error });
+    log.warn("Browser push delivery failed", { statusCode: getFailureStatusCode(error) });
   }
 }
 
