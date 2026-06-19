@@ -79,11 +79,13 @@ describe("integration", () => {
       const base = `http://127.0.0.1:${server.port}`;
       const rootResponse = await fetch(`${base}/`, { headers: { accept: "text/html" } });
       expect(rootResponse.status).toBe(200);
+      expect(rootResponse.headers.get("content-type")).toContain("text/html");
       expectSecurityHeaders(rootResponse);
       expect(await rootResponse.text()).toContain("app shell");
 
       const assetResponse = await fetch(`${base}/app.js`, { headers: { accept: "application/javascript" } });
       expect(assetResponse.status).toBe(200);
+      expect(assetResponse.headers.get("content-type")).toContain("javascript");
       expectSecurityHeaders(assetResponse);
       expect(await assetResponse.text()).toBe("console.log('listen');");
 
@@ -107,6 +109,7 @@ describe("integration", () => {
 
       const fallbackResponse = await fetch(`${base}/settings`, { headers: { accept: "text/html" } });
       expect(fallbackResponse.status).toBe(200);
+      expect(fallbackResponse.headers.get("content-type")).toContain("text/html");
       expectSecurityHeaders(fallbackResponse);
       expect(await fallbackResponse.text()).toContain("app shell");
 
