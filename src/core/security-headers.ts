@@ -1,5 +1,4 @@
 const SECURITY_HEADERS = [
-  ["x-content-type-options", "nosniff"],
   ["referrer-policy", "strict-origin-when-cross-origin"],
   ["x-frame-options", "DENY"],
   ["content-security-policy", "frame-ancestors 'none'"],

@@ -9,7 +9,6 @@ import { runConfigCommand } from "../../src/cli/config";
 import { runNotifyCommand } from "../../src/cli/notify";
 
 function expectSecurityHeaders(response: Response): void {
-  expect(response.headers.get("x-content-type-options")).toBe("nosniff");
   expect(response.headers.get("referrer-policy")).toBe("strict-origin-when-cross-origin");
   expect(response.headers.get("x-frame-options")).toBe("DENY");
   expect(response.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
