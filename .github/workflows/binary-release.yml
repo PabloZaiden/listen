@@ -10,10 +10,7 @@ jobs:
     permissions:
       contents: write
     with:
-      prebuild_command: |
-        VERSION="${GITHUB_REF_NAME#v}"
-        jq --arg v "$VERSION" '.version = $v' package.json > package.json.tmp && mv package.json.tmp package.json
-        bun run build
+      prebuild_command: bun run build
       binaries: |
         [
           {
