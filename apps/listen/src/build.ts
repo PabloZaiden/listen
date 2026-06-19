@@ -1,6 +1,7 @@
 const targetArg = Bun.argv.find((arg) => arg.startsWith("--target="));
 const target = targetArg?.slice("--target=".length);
-const outfile = target ? `dist/listen-${target}` : "dist/listen";
+const releaseTarget = target?.startsWith("bun-") ? target.slice("bun-".length) : target;
+const outfile = releaseTarget ? `dist/listen-${releaseTarget}` : "dist/listen";
 
 await Bun.$`mkdir -p dist`;
 
