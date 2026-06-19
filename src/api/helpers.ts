@@ -1,8 +1,10 @@
 import type { ErrorResponse } from "@listen/contracts";
+import { applySecurityHeaders } from "../core/security-headers";
 
 export function jsonResponse(body: unknown, init?: ResponseInit): Response {
   const headers = new Headers(init?.headers);
   headers.set("content-type", "application/json");
+  applySecurityHeaders(headers);
   return new Response(JSON.stringify(body), { ...init, headers });
 }
 

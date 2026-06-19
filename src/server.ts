@@ -8,6 +8,8 @@ import { readServerConfig, type ServerConfig } from "./core/server-config";
 import { createLogger } from "./core/logger";
 import { getLogLevelPreference } from "./persistence/preferences";
 import { isLogLevelFromEnv, setLogLevel } from "./core/logger";
+import { withSecurityHeaders } from "./core/security-headers";
+import { isServerDevelopmentMode } from "./core/runtime-mode";
 import webIndex from "./index.html";
 
 const log = createLogger("server");
@@ -110,7 +112,7 @@ async function serveDistWebAsset(distDir: string, pathname: string): Promise<Res
   return undefined;
 }
 
-export async function serveWebApp(req: Request): Promise<Response> {
+async function serveWebAppResponse(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const decodedPathname = decodeWebPathname(url.pathname);
   if (decodedPathname === undefined) {
@@ -120,7 +122,7 @@ export async function serveWebApp(req: Request): Promise<Response> {
   const distDir = getConfiguredWebDistDir();
   if (!distDir) {
     return await serveSourceWebAsset(decodedPathname)
-      ?? new Response(webIndex.index, { headers: { "content-type": "text/html; charset=utf-8" } });
+      ?? new Response(Bun.file(webIndex.index), { headers: { "content-type": "text/html; charset=utf-8" } });
   }
 
   const distAsset = await serveDistWebAsset(distDir, decodedPathname);
@@ -150,8 +152,8 @@ export async function serveWebApp(req: Request): Promise<Response> {
   return new Response("Configured web dist is missing index.html.", { status: 500 });
 }
 
-export function getWebAppRoute(): typeof webIndex | typeof serveWebApp {
-  return getConfiguredWebDistDir() ? serveWebApp : webIndex;
+export async function serveWebApp(req: Request): Promise<Response> {
+  return withSecurityHeaders(await serveWebAppResponse(req));
 }
 
 export function createFetchHandler(config: ServerConfig): (req: Request, server?: Server<WebSocketData>) => Promise<Response | undefined> {
@@ -185,9 +187,9 @@ export function startServer(config = readServerConfig()): Server<WebSocketData> 
       [SERVICE_WORKER_PATH]: (req) => serveWebApp(req),
       [WEB_MANIFEST_PATH]: (req) => serveWebApp(req),
       "/icons/*": (req) => serveWebApp(req),
-      "/*": getWebAppRoute(),
+      "/*": (req) => serveWebApp(req),
     },
     websocket: websocketHandlers,
-    development: process.env["NODE_ENV"] !== "production",
+    development: isServerDevelopmentMode(),
   });
 }

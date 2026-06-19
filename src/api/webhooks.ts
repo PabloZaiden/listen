@@ -4,10 +4,17 @@ import { getSourceForWebhook, markSourceUsed } from "../core/sources";
 import { verifyWebhookToken } from "../core/webhook-tokens";
 import { getRequestOrigin } from "../core/request-origin";
 import { createLogger } from "../core/logger";
+import { checkGlobalWebhookRateLimit, checkSourceWebhookRateLimit, type WebhookRateLimitDecision } from "../core/webhook-rate-limit";
 import { errorResponse, jsonResponse, methodNotAllowed } from "./helpers";
 import { parseJsonBody, parseWithSchema, RequestValidationError } from "./validation";
 
 const log = createLogger("api:webhooks");
+
+function rateLimitedResponse(decision: Extract<WebhookRateLimitDecision, { allowed: false }>): Response {
+  return errorResponse(429, "rate_limited", "Too many webhook requests", undefined, {
+    "retry-after": String(decision.retryAfterSeconds),
+  });
+}
 
 export async function handleWebhook(req: Request): Promise<Response | undefined> {
   const url = new URL(req.url);
@@ -17,6 +24,12 @@ export async function handleWebhook(req: Request): Promise<Response | undefined>
   }
   if (req.method !== "POST") {
     return methodNotAllowed();
+  }
+
+  const globalRateLimit = checkGlobalWebhookRateLimit();
+  if (!globalRateLimit.allowed) {
+    log.warn("Global webhook rate limit exceeded");
+    return rateLimitedResponse(globalRateLimit);
   }
 
   const sourceId = decodeURIComponent(match[1] ?? "");
@@ -33,6 +46,11 @@ export async function handleWebhook(req: Request): Promise<Response | undefined>
   if (!await verifyWebhookToken(token, source.tokenHash)) {
     log.warn("Webhook token invalid", { sourceId });
     return errorResponse(401, "invalid_webhook_token", "Webhook token is invalid");
+  }
+  const sourceRateLimit = checkSourceWebhookRateLimit(source.id);
+  if (!sourceRateLimit.allowed) {
+    log.warn("Source webhook rate limit exceeded", { sourceId: source.id });
+    return rateLimitedResponse(sourceRateLimit);
   }
 
   try {

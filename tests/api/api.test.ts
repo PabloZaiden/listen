@@ -1,10 +1,12 @@
 import "./../setup";
 import { describe, expect, test } from "bun:test";
+import { WEBHOOK_JSON_BODY_MAX_BYTES } from "@listen/shared";
 import { createFetchHandler } from "../../src/server";
 import { readServerConfig, type ServerConfig } from "../../src/core/server-config";
 import { handleServerControl, scheduleServerShutdown } from "../../src/api/server-control";
 import { setBrowserPushSenderForTests } from "../../src/core/browser-push";
 import { getLogLevel } from "../../src/core/logger";
+import { setWebhookRateLimitOptionsForTests } from "../../src/core/webhook-rate-limit";
 import { getBrowserPushSubscriptionByEndpoint } from "../../src/persistence/browser-push";
 
 async function request(path: string, init?: RequestInit, config?: Partial<ServerConfig>): Promise<Response> {
@@ -18,6 +20,22 @@ async function request(path: string, init?: RequestInit, config?: Partial<Server
 
 async function json<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
+}
+
+function expectSecurityHeaders(response: Response): void {
+  expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+  expect(response.headers.get("referrer-policy")).toBe("strict-origin-when-cross-origin");
+  expect(response.headers.get("x-frame-options")).toBe("DENY");
+  expect(response.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
+}
+
+async function expectRateLimited(response: Response): Promise<void> {
+  expect(response.status).toBe(429);
+  expect(response.headers.get("retry-after")).toBeTruthy();
+  expect(await json<{ error: string; message: string }>(response)).toEqual({
+    error: "rate_limited",
+    message: "Too many webhook requests",
+  });
 }
 
 async function createSource(): Promise<{ source: { id: string; name: string }; webhookUrl: string }> {
@@ -46,6 +64,26 @@ function browserPushSubscription(endpoint: string): unknown {
   };
 }
 
+function oversizedWebhookJson(): string {
+  return JSON.stringify({
+    title: "A",
+    shortDescription: "B",
+    markdownContent: "x".repeat(WEBHOOK_JSON_BODY_MAX_BYTES),
+  });
+}
+
+function oversizedWebhookJsonStream(): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode('{"title":"A","shortDescription":"B","markdownContent":"'));
+      controller.enqueue(encoder.encode("x".repeat(WEBHOOK_JSON_BODY_MAX_BYTES)));
+      controller.enqueue(encoder.encode('"}'));
+      controller.close();
+    },
+  });
+}
+
 async function waitForExpectation(assertion: () => void, timeoutMs = 1_000): Promise<void> {
   const startedAt = Date.now();
   let lastError: unknown;
@@ -67,6 +105,7 @@ describe("API", () => {
   test("health returns ok", async () => {
     const response = await request("/api/health");
     expect(response.status).toBe(200);
+    expectSecurityHeaders(response);
     expect(await json<{ ok: boolean }>(response)).toEqual({ ok: true });
   });
 
@@ -205,6 +244,72 @@ describe("API", () => {
     const list = await json<{ notifications: Array<{ id: string; source: string; markdownContent?: string }> }>(listResponse);
     expect(list.notifications[0]?.source).toBe("Agent");
     expect(list.notifications[0]?.markdownContent).toBeUndefined();
+  });
+
+  test("webhook rejects oversized JSON from content length", async () => {
+    const created = await createSource();
+    const body = oversizedWebhookJson();
+    const response = await webhook(created.webhookUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "content-length": String(new TextEncoder().encode(body).byteLength),
+      },
+      body,
+    });
+
+    expect(response.status).toBe(413);
+    expect(await json(response)).toMatchObject({ error: "request_body_too_large" });
+  });
+
+  test("webhook rejects oversized streamed JSON without content length", async () => {
+    const created = await createSource();
+    const response = await webhook(created.webhookUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: oversizedWebhookJsonStream(),
+    });
+
+    expect(response.status).toBe(413);
+    expect(await json(response)).toMatchObject({ error: "request_body_too_large" });
+  });
+
+  test("webhook rejects malformed JSON", async () => {
+    const created = await createSource();
+    const response = await webhook(created.webhookUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{",
+    });
+
+    expect(response.status).toBe(400);
+    expect(await json(response)).toMatchObject({ error: "malformed_json" });
+  });
+
+  test("webhook global rate limit applies before source lookup", async () => {
+    setWebhookRateLimitOptionsForTests({ globalLimit: 2, sourceLimit: 100 });
+    const init = () => ({
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+
+    expect((await request("/api/webhooks/missing/token", init())).status).toBe(404);
+    expect((await request("/api/webhooks/missing/token", init())).status).toBe(404);
+    await expectRateLimited(await request("/api/webhooks/missing/token", init()));
+  });
+
+  test("webhook valid-source rate limit applies after token validation", async () => {
+    setWebhookRateLimitOptionsForTests({ globalLimit: 100, sourceLimit: 1 });
+    const created = await createSource();
+    const init = () => ({
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "A", shortDescription: "B", markdownContent: "C" }),
+    });
+
+    expect((await webhook(created.webhookUrl, init())).status).toBe(201);
+    await expectRateLimited(await webhook(created.webhookUrl, init()));
   });
 
   test("webhook rejects invalid token and disabled source", async () => {
