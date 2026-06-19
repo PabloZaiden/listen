@@ -35,6 +35,10 @@ describe("integration", () => {
     mkdirSync(distDir);
     writeFileSync(join(distDir, "index.html"), "<!doctype html><title>Listen dist</title><main>app shell</main>");
     writeFileSync(join(distDir, "app.js"), "console.log('listen');");
+    writeFileSync(join(distDir, "service-worker"), "self.addEventListener('push', () => {});");
+    writeFileSync(join(distDir, "manifest.webmanifest"), JSON.stringify({ name: "Listen", icons: [{ src: "/icons/listen-192.png" }] }));
+    mkdirSync(join(distDir, "icons"));
+    writeFileSync(join(distDir, "icons", "listen-192.png"), "png");
     writeFileSync(join(webRoot, "secret.txt"), "outside dist");
     process.env["LISTEN_WEB_DIST_DIR"] = distDir;
 
@@ -44,6 +48,22 @@ describe("integration", () => {
       const assetResponse = await fetch(`${base}/app.js`, { headers: { accept: "application/javascript" } });
       expect(assetResponse.status).toBe(200);
       expect(await assetResponse.text()).toBe("console.log('listen');");
+
+      const serviceWorkerResponse = await fetch(`${base}/service-worker`, { headers: { accept: "text/javascript" } });
+      expect(serviceWorkerResponse.status).toBe(200);
+      expect(serviceWorkerResponse.headers.get("content-type")).toContain("text/javascript");
+      expect(serviceWorkerResponse.headers.get("service-worker-allowed")).toBe("/");
+      expect(await serviceWorkerResponse.text()).toContain("addEventListener");
+
+      const manifestResponse = await fetch(`${base}/manifest.webmanifest`, { headers: { accept: "application/manifest+json" } });
+      expect(manifestResponse.status).toBe(200);
+      expect(manifestResponse.headers.get("content-type")).toContain("application/manifest+json");
+      expect(await manifestResponse.json()).toMatchObject({ name: "Listen" });
+
+      const iconResponse = await fetch(`${base}/icons/listen-192.png`, { headers: { accept: "image/png" } });
+      expect(iconResponse.status).toBe(200);
+      expect(iconResponse.headers.get("content-type")).toContain("image/png");
+      expect(await iconResponse.text()).toBe("png");
 
       const fallbackResponse = await fetch(`${base}/settings`, { headers: { accept: "text/html" } });
       expect(fallbackResponse.status).toBe(200);
