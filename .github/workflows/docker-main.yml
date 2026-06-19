@@ -12,6 +12,20 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: Get latest release version
+        id: latest-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          LATEST_TAG=$(gh release view --json tagName -q '.tagName' 2>/dev/null || echo "v0.0.0")
+          LATEST_VERSION="${LATEST_TAG#v}"
+          echo "version=${LATEST_VERSION}" >> "$GITHUB_OUTPUT"
+      - name: Update package.json version
+        run: |
+          TIMESTAMP=$(date -u +"%Y-%m-%d-%H-%M")
+          SHORT_SHA="${GITHUB_SHA::7}"
+          VERSION="${{ steps.latest-release.outputs.version }}-main-${TIMESTAMP}-${SHORT_SHA}"
+          jq --arg v "$VERSION" '.version = $v' package.json > package.json.tmp && mv package.json.tmp package.json
       - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435
       - uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1
         with:

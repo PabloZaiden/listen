@@ -9,6 +9,7 @@ import { appFetch } from "@listen/client-sdk";
 import { BrowserPushSettings } from "./browserPushSettings";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { normalizeMarkdownForDisplay } from "./markdown";
+import { LISTEN_VERSION } from "../version";
 import "./styles.css";
 
 interface AppConfig {
@@ -498,6 +499,10 @@ function SettingsView({ refreshConfig }: { refreshConfig: () => Promise<void> })
   );
 }
 
+function VersionLegend(): React.ReactElement {
+  return <footer className="version-legend">listen {LISTEN_VERSION}</footer>;
+}
+
 function App(): React.ReactElement {
   const [config, refreshConfig] = useConfig();
   const [sources, refreshSources] = useSources();
@@ -588,10 +593,10 @@ function App(): React.ReactElement {
   }, [ws.lastEvent, sourceId, refreshSources]);
 
   if (!config) {
-    return <main className="app"><div className="auth-card">Loading Listen...</div></main>;
+    return <main className="app"><div className="auth-card">Loading Listen...</div><VersionLegend /></main>;
   }
   if (!authenticated) {
-    return <main className="app"><AuthGate config={config} onAuthenticated={refreshConfig} /></main>;
+    return <main className="app"><AuthGate config={config} onAuthenticated={refreshConfig} /><VersionLegend /></main>;
   }
 
   return (
@@ -616,6 +621,7 @@ function App(): React.ReactElement {
       {view.name === "detail" ? <NotificationDetailView id={view.id} back={() => setView({ name: "list" })} /> : null}
       {view.name === "sources" ? <SourceManager sources={sources} refresh={refreshSources} /> : null}
       {view.name === "settings" ? <SettingsView refreshConfig={refreshConfig} /> : null}
+      <VersionLegend />
     </main>
   );
 }

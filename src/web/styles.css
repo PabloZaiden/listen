@@ -114,6 +114,13 @@ nav {
   outline-offset: 4px;
 }
 
+.version-legend {
+  color: var(--muted);
+  font-size: 0.75rem;
+  margin: 1rem 0 0.25rem;
+  text-align: center;
+}
+
 header nav button {
   border-radius: 0.55rem;
   padding: 0.5rem 0.65rem;
