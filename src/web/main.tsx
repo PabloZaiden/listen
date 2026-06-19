@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -8,6 +8,7 @@ import type { LogLevelName } from "@listen/shared";
 import { appFetch } from "@listen/client-sdk";
 import { BrowserPushSettings } from "./browserPushSettings";
 import { useWebSocket } from "./hooks/useWebSocket";
+import { normalizeMarkdownForDisplay } from "./markdown";
 import "./styles.css";
 
 interface AppConfig {
@@ -321,6 +322,8 @@ function NotificationDetailView({ id, back }: { id: string; back: () => void }):
     return <section className="panel">Loading...</section>;
   }
 
+  const markdownContent = normalizeMarkdownForDisplay(detail.markdownContent);
+
   return (
     <section className="panel detail">
       <div className="detail-summary">
@@ -347,7 +350,7 @@ function NotificationDetailView({ id, back }: { id: string; back: () => void }):
             a: (props) => <a {...props} target="_blank" rel="noreferrer noopener" />,
           }}
         >
-          {detail.markdownContent}
+          {markdownContent}
         </ReactMarkdown>
       </div>
       <div className="detail-actions">
@@ -501,6 +504,7 @@ function App(): React.ReactElement {
   const [notifications, setNotifications] = useState<NotificationListItem[]>([]);
   const [sourceId, setSourceId] = useState("");
   const [view, setView] = useState<View>(initialView);
+  const homeRefreshTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const authenticated = Boolean(config?.passkeyAuth.authenticated);
   const ws = useWebSocket(authenticated ? "/api/ws" : undefined);
@@ -510,11 +514,60 @@ function App(): React.ReactElement {
     setNotifications((await json<{ notifications: NotificationListItem[] }>(`/api/notifications${query}`)).notifications);
   }, [sourceId]);
 
+  const refreshHome = useCallback(async () => {
+    await Promise.all([refreshSources(), refreshNotifications()]);
+  }, [refreshSources, refreshNotifications]);
+
+  const queueHomeRefresh = useCallback(() => {
+    if (homeRefreshTimer.current) {
+      return;
+    }
+    homeRefreshTimer.current = setTimeout(() => {
+      homeRefreshTimer.current = undefined;
+      void refreshHome();
+    }, 0);
+  }, [refreshHome]);
+
+  const showHome = useCallback(() => {
+    setView({ name: "list" });
+    window.history.replaceState(null, "", window.location.pathname);
+    queueHomeRefresh();
+  }, [queueHomeRefresh]);
+
   useEffect(() => {
     if (authenticated) {
-      void Promise.all([refreshSources(), refreshNotifications()]);
+      void refreshHome();
     }
-  }, [authenticated, refreshSources, refreshNotifications]);
+  }, [authenticated, refreshHome]);
+
+  useEffect(() => {
+    if (!authenticated) {
+      return;
+    }
+
+    const refreshWhenVisible = (): void => {
+      if (document.visibilityState === "visible") {
+        queueHomeRefresh();
+      }
+    };
+    const refreshWhenFocused = (): void => {
+      queueHomeRefresh();
+    };
+
+    window.addEventListener("focus", refreshWhenFocused);
+    window.addEventListener("pageshow", refreshWhenFocused);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      window.removeEventListener("focus", refreshWhenFocused);
+      window.removeEventListener("pageshow", refreshWhenFocused);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      if (homeRefreshTimer.current) {
+        clearTimeout(homeRefreshTimer.current);
+        homeRefreshTimer.current = undefined;
+      }
+    };
+  }, [authenticated, queueHomeRefresh]);
 
   useEffect(() => {
     const event = ws.lastEvent as RealtimeEvent | undefined;
@@ -544,7 +597,7 @@ function App(): React.ReactElement {
   return (
     <main className="app">
       <header>
-        <button type="button" className="brand-button" onClick={() => setView({ name: "list" })}>Listen</button>
+        <button type="button" className="brand-button" onClick={showHome}>Listen</button>
         <nav>
           <button type="button" onClick={() => setView({ name: "sources" })}>Sources</button>
           <button type="button" onClick={() => setView({ name: "settings" })}>Settings</button>
