@@ -14,9 +14,6 @@ export function applySecurityHeaders(headers: Headers): Headers {
 }
 
 export function withSecurityHeaders(response: Response): Response {
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers: applySecurityHeaders(new Headers(response.headers)),
-  });
+  applySecurityHeaders(response.headers);
+  return response;
 }
