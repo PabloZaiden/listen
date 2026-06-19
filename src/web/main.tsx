@@ -513,11 +513,46 @@ function App(): React.ReactElement {
     setNotifications((await json<{ notifications: NotificationListItem[] }>(`/api/notifications${query}`)).notifications);
   }, [sourceId]);
 
+  const refreshHome = useCallback(async () => {
+    await Promise.all([refreshSources(), refreshNotifications()]);
+  }, [refreshSources, refreshNotifications]);
+
+  const showHome = useCallback(() => {
+    setView({ name: "list" });
+    window.history.replaceState(null, "", window.location.pathname);
+    void refreshHome();
+  }, [refreshHome]);
+
   useEffect(() => {
     if (authenticated) {
-      void Promise.all([refreshSources(), refreshNotifications()]);
+      void refreshHome();
     }
-  }, [authenticated, refreshSources, refreshNotifications]);
+  }, [authenticated, refreshHome]);
+
+  useEffect(() => {
+    if (!authenticated) {
+      return;
+    }
+
+    const refreshWhenVisible = (): void => {
+      if (document.visibilityState === "visible") {
+        void refreshHome();
+      }
+    };
+    const refreshWhenFocused = (): void => {
+      void refreshHome();
+    };
+
+    window.addEventListener("focus", refreshWhenFocused);
+    window.addEventListener("pageshow", refreshWhenFocused);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      window.removeEventListener("focus", refreshWhenFocused);
+      window.removeEventListener("pageshow", refreshWhenFocused);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [authenticated, refreshHome]);
 
   useEffect(() => {
     const event = ws.lastEvent as RealtimeEvent | undefined;
@@ -547,7 +582,7 @@ function App(): React.ReactElement {
   return (
     <main className="app">
       <header>
-        <button type="button" className="brand-button" onClick={() => setView({ name: "list" })}>Listen</button>
+        <button type="button" className="brand-button" onClick={showHome}>Listen</button>
         <nav>
           <button type="button" onClick={() => setView({ name: "sources" })}>Sources</button>
           <button type="button" onClick={() => setView({ name: "settings" })}>Settings</button>
