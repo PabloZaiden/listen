@@ -20,4 +20,11 @@ if (!result.success) {
   process.exit(1);
 }
 
+await Bun.write(`${outDir}/service-worker`, Bun.file(`${sharedSrcDir}/web/service-worker.ts`));
+await Bun.write(`${outDir}/manifest.webmanifest`, Bun.file(`${sharedSrcDir}/web/manifest.webmanifest`));
+await Bun.$`mkdir -p ${outDir}/icons`.quiet();
+for (const icon of ["listen-192.png", "listen-512.png", "apple-touch-icon.png"]) {
+  await Bun.write(`${outDir}/icons/${icon}`, Bun.file(`${sharedSrcDir}/web/icons/${icon}`));
+}
+
 export {};

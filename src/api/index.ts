@@ -1,7 +1,9 @@
 import type { Server } from "bun";
+import { handleBrowserPush } from "./browser-push";
 import { configRoute } from "./config";
 import { handleNotifications } from "./notifications";
 import { handlePasskeyAuth } from "./passkey-auth";
+import { handlePreferences } from "./preferences";
 import { requirePasskeyAuth } from "./passkey-guard";
 import { checkSameOrigin } from "./same-origin-guard";
 import { handleServerControl } from "./server-control";
@@ -10,8 +12,11 @@ import { handleWebhook } from "./webhooks";
 import { healthRoute } from "./health";
 import { errorResponse, notFound } from "./helpers";
 import { withRequestLogging } from "./request-logging";
+import { createLogger } from "../core/logger";
 import type { ServerConfig } from "../core/server-config";
 import type { WebSocketData } from "./websocket/types";
+
+const log = createLogger("api");
 
 function isWebhookPath(pathname: string): boolean {
   return /^\/api\/webhooks\/[^/]+\/[^/]+$/.test(pathname);
@@ -44,11 +49,13 @@ export async function handleApiRequest(req: Request, config: ServerConfig, serve
         return authFailure;
       }
       if (!server) {
+        log.warn("WebSocket upgrade requested but server is unavailable", { sourceId: url.searchParams.get("sourceId") ?? undefined });
         return errorResponse(400, "websocket_unavailable", "WebSocket server is unavailable");
       }
       const upgraded = server.upgrade(req, {
         data: { sourceId: url.searchParams.get("sourceId") ?? undefined } satisfies WebSocketData,
       });
+      log.trace("WebSocket upgrade attempted", { sourceId: url.searchParams.get("sourceId") ?? undefined, upgraded });
       return upgraded ? undefined : errorResponse(400, "websocket_upgrade_failed", "WebSocket upgrade failed");
     }
 
@@ -91,6 +98,11 @@ export async function handleApiRequest(req: Request, config: ServerConfig, serve
       return serverControlRoute;
     }
 
+    const preferencesRoute = await handlePreferences(req);
+    if (preferencesRoute) {
+      return preferencesRoute;
+    }
+
     const sourceRoute = await handleSources(req);
     if (sourceRoute) {
       return sourceRoute;
@@ -99,6 +111,11 @@ export async function handleApiRequest(req: Request, config: ServerConfig, serve
     const notificationRoute = handleNotifications(req);
     if (notificationRoute) {
       return notificationRoute;
+    }
+
+    const browserPushRoute = await handleBrowserPush(req);
+    if (browserPushRoute) {
+      return browserPushRoute;
     }
 
     return notFound();

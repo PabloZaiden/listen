@@ -11,6 +11,9 @@ import {
 import { emit } from "./event-emitter";
 import { generateWebhookToken, hashWebhookToken } from "./webhook-tokens";
 import { getRequestOrigin } from "./request-origin";
+import { createLogger } from "./logger";
+
+const log = createLogger("sources");
 
 export interface CreatedSource {
   source: SourceResponse;
@@ -49,6 +52,7 @@ export async function createSource(name: string, req: Request): Promise<CreatedS
   insertSource(source);
   const response = toSourceResponse(source);
   emit({ type: "source.created", source: response });
+  log.info("Source created", { sourceId: source.id, name: source.name });
   return {
     source: response,
     token,
@@ -67,15 +71,18 @@ export function getSourceForWebhook(id: string): PersistedSource | undefined {
 export async function rotateSourceToken(id: string, req: Request): Promise<CreatedSource | undefined> {
   const existing = getSourceById(id);
   if (!existing) {
+    log.warn("Source token rotation requested but source was not found", { sourceId: id });
     return undefined;
   }
   const token = generateWebhookToken();
   const updated = updateSourceTokenHash(id, await hashWebhookToken(token), nowIso());
   if (!updated) {
+    log.warn("Source token rotation failed after lookup", { sourceId: id });
     return undefined;
   }
   const response = toSourceResponse(updated);
   emit({ type: "source.updated", source: response });
+  log.info("Source token rotated", { sourceId: id });
   return {
     source: response,
     token,
@@ -86,6 +93,7 @@ export async function rotateSourceToken(id: string, req: Request): Promise<Creat
 export function markSourceUsed(id: string, usedAt = nowIso()): SourceResponse | undefined {
   const source = updateSourceLastUsedAt(id, usedAt);
   if (!source) {
+    log.warn("Source last-used update failed", { sourceId: id });
     return undefined;
   }
   const response = toSourceResponse(source);
@@ -96,8 +104,10 @@ export function markSourceUsed(id: string, usedAt = nowIso()): SourceResponse | 
 export function softDisableSource(id: string): boolean {
   const source = disableSource(id, nowIso());
   if (!source) {
+    log.warn("Source disable requested but source was not found", { sourceId: id });
     return false;
   }
   emit({ type: "source.deleted", sourceId: id });
+  log.info("Source disabled", { sourceId: id });
   return true;
 }

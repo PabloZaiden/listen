@@ -288,10 +288,36 @@ code {
   gap: 0.35rem;
 }
 
-.settings-actions {
+.settings-actions,
+.settings-card-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
+}
+
+.settings-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--surface-muted);
+}
+
+.settings-card h3,
+.settings-card p {
+  margin: 0;
+}
+
+.settings-card p {
+  margin-top: 0.4rem;
+}
+
+.settings-card-actions {
+  justify-content: flex-end;
 }
 
 .danger-zone {
@@ -382,6 +408,15 @@ code {
   .source-card {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .settings-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-card-actions {
+    justify-content: flex-start;
   }
 
   header {

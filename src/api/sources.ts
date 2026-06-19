@@ -1,7 +1,10 @@
 import { createSourceRequestSchema } from "@listen/contracts";
 import { createSource, listSources, rotateSourceToken, softDisableSource } from "../core/sources";
+import { createLogger, errorLogFields } from "../core/logger";
 import { errorResponse, jsonResponse, methodNotAllowed, notFound, successResponse } from "./helpers";
 import { parseJsonBody, parseWithSchema, RequestValidationError } from "./validation";
+
+const log = createLogger("api:sources");
 
 export async function handleSources(req: Request): Promise<Response | undefined> {
   const url = new URL(req.url);
@@ -38,8 +41,10 @@ export async function handleSources(req: Request): Promise<Response | undefined>
     return undefined;
   } catch (error) {
     if (error instanceof RequestValidationError) {
+      log.warn("Source request validation failed", { path: url.pathname, method: req.method, message: error.message });
       return error.response;
     }
+    log.error("Source operation failed", { path: url.pathname, method: req.method, ...errorLogFields(error) });
     return errorResponse(500, "source_operation_failed", "Source operation failed");
   }
 }

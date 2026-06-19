@@ -17,6 +17,9 @@ import {
 import { getPreference, setPreference } from "../persistence/preferences";
 import { getRequestOrigin } from "./request-origin";
 import type { ServerConfig } from "./server-config";
+import { createLogger } from "./logger";
+
+const log = createLogger("passkey-auth");
 
 const PASSKEY_RP_NAME = "Listen";
 const PASSKEY_USER_NAME = "listen";
@@ -56,6 +59,7 @@ function getAuthSecret(): string {
   }
   const secret = randomSecret();
   setPreference(PASSKEY_AUTH_SECRET_KEY, secret);
+  log.debug("Created passkey auth secret");
   return secret;
 }
 
@@ -63,6 +67,7 @@ function getAuthVersion(): number {
   const raw = getPreference(PASSKEY_AUTH_VERSION_KEY);
   if (!raw) {
     setPreference(PASSKEY_AUTH_VERSION_KEY, "1");
+    log.debug("Initialized passkey auth version", { version: 1 });
     return 1;
   }
   const version = Number(raw);
@@ -72,6 +77,7 @@ function getAuthVersion(): number {
 function bumpAuthVersion(): number {
   const version = getAuthVersion() + 1;
   setPreference(PASSKEY_AUTH_VERSION_KEY, String(version));
+  log.info("Bumped passkey auth version", { version });
   return version;
 }
 
@@ -203,6 +209,7 @@ export async function registrationOptions(req: Request): Promise<{ options: unkn
     type: "registration",
     expiresAt: Date.now() + PASSKEY_CHALLENGE_MAX_AGE_SECONDS * 1000,
   }));
+  log.trace("Generated passkey registration options", { rpID: origin.rpID, origin: origin.origin });
   return { options, headers };
 }
 
@@ -241,6 +248,12 @@ export async function verifyRegistration(req: Request, response: RegistrationRes
   const headers = new Headers();
   headers.append("set-cookie", await createSessionCookie(req));
   headers.append("set-cookie", expiredCookieHeader(PASSKEY_CHALLENGE_COOKIE));
+  log.info("Passkey registration verified", {
+    credentialId: credential.id,
+    rpID: origin.rpID,
+    deviceType: credential.deviceType,
+    backedUp: credential.backedUp,
+  });
   return headers;
 }
 
@@ -264,6 +277,7 @@ export async function authenticationOptions(req: Request): Promise<{ options: un
     type: "authentication",
     expiresAt: Date.now() + PASSKEY_CHALLENGE_MAX_AGE_SECONDS * 1000,
   }));
+  log.trace("Generated passkey authentication options", { rpID: origin.rpID, credentialId: credential.id });
   return { options, headers };
 }
 
@@ -294,6 +308,7 @@ export async function verifyAuthentication(req: Request, response: Authenticatio
   const headers = new Headers();
   headers.append("set-cookie", await createSessionCookie(req));
   headers.append("set-cookie", expiredCookieHeader(PASSKEY_CHALLENGE_COOKIE));
+  log.info("Passkey authentication verified", { credentialId: credential.id, rpID: origin.rpID });
   return headers;
 }
 
@@ -307,6 +322,7 @@ export function logoutHeaders(): Headers {
 export function deleteConfiguredPasskey(): Headers {
   deletePasskeyCredential();
   bumpAuthVersion();
+  log.warn("Configured passkey deleted");
   return logoutHeaders();
 }
 

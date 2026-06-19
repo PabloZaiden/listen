@@ -29,6 +29,16 @@ Native runs default to `127.0.0.1:3000`. Docker uses `0.0.0.0:8080` and stores d
 
 The Settings view includes a protected "Kill server" action. It calls `POST /api/server/kill`, returns a success response first, then intentionally terminates the process so containerized deployments can restart it.
 
+## Browser notifications
+
+The Settings view includes per-browser Web Push subscriptions. Click "Enable on this browser" to allow Listen to send system notifications to the current browser profile. Repeat this on each desktop or mobile browser where you want notifications. If the browser is already subscribed, Settings shows a disable action for only that browser.
+
+Listen uses standards-based Web Push with a TypeScript service worker served directly at `/service-worker`; the production web build copies that same static source into `dist/service-worker`. VAPID keys are generated once and persisted in the data directory, so existing subscriptions survive server restarts. The public origin used for VAPID is derived from the same request origin logic used to generate webhook URLs; no extra public-origin environment variable is required. Local `http:` development uses a `mailto:` VAPID subject because Web Push requires VAPID subjects to be `https:` or `mailto:`.
+
+Safari support uses the modern Web Push API. On iPhone and iPad, install Listen to the Home Screen first, open it from the Home Screen web app, then subscribe from Settings. Production browser notifications require HTTPS; localhost can be used for development.
+
+When a notification is clicked, Listen opens or focuses the app and navigates to that notification's detail view.
+
 ## First passkey setup
 
 All non-public backend operations require passkey authentication unless `LISTEN_DISABLE_PASSKEY=true`, `1`, or `yes` is set for emergency recovery. Passkeys require HTTPS except on localhost.
@@ -82,7 +92,7 @@ volumes:
 
 ## Reverse proxy and HTTPS/passkey notes
 
-Listen runs at the root of its own domain and does not support subpath mounting. If TLS terminates at a reverse proxy, preserve the public host and set `X-Forwarded-Proto: https` so passkey origins match the browser-visible URL.
+Listen runs at the root of its own domain and does not support subpath mounting. If TLS terminates at a reverse proxy, preserve the public host and set `X-Forwarded-Proto: https` so passkey, webhook URL generation, and Web Push VAPID origins match the browser-visible URL.
 
 ## Environment variables
 
@@ -99,7 +109,7 @@ Listen runs at the root of its own domain and does not support subpath mounting.
 
 ## Security model
 
-Passkey authentication protects all non-public APIs and `/api/ws`. The webhook ingestion endpoint is the only unauthenticated write endpoint and requires a source-specific URL token. Request logs redact webhook token path segments. Same-origin checks protect cookie-authenticated state-changing browser requests and WebSocket upgrades. Webhook payloads cannot override the server-derived source name.
+Passkey authentication protects all non-public APIs, `/api/ws`, and browser push subscription management. The webhook ingestion endpoint is the only unauthenticated write endpoint and requires a source-specific URL token. Request logs redact webhook token path segments. Same-origin checks protect cookie-authenticated state-changing browser requests and WebSocket upgrades. Webhook payloads cannot override the server-derived source name. Browser push endpoints and cryptographic key material are treated as operational secrets and are not logged.
 
 ## Development
 

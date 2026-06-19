@@ -64,6 +64,22 @@ export function initializeDatabase(dataDir = process.env["LISTEN_DATA_DIR"] ?? "
       FOREIGN KEY (source_id) REFERENCES webhook_sources(id) ON DELETE SET NULL
     );
 
+    CREATE TABLE IF NOT EXISTS browser_push_subscriptions (
+      id TEXT PRIMARY KEY,
+      endpoint TEXT NOT NULL UNIQUE,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      expiration_time INTEGER,
+      user_agent TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      last_success_at TEXT,
+      last_failure_at TEXT,
+      failure_count INTEGER NOT NULL DEFAULT 0,
+      next_attempt_at TEXT,
+      disabled_at TEXT
+    );
+
     CREATE INDEX IF NOT EXISTS idx_notifications_created_at
     ON notifications(created_at DESC, id DESC);
 
@@ -72,6 +88,9 @@ export function initializeDatabase(dataDir = process.env["LISTEN_DATA_DIR"] ?? "
 
     CREATE INDEX IF NOT EXISTS idx_notifications_opened_at
     ON notifications(opened_at);
+
+    CREATE INDEX IF NOT EXISTS idx_browser_push_active_next_attempt
+    ON browser_push_subscriptions(disabled_at, next_attempt_at);
   `);
   runMigrations(database);
   return database;
