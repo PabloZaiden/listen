@@ -1,1 +1,3 @@
-export const LISTEN_VERSION = "0.0.0-development";
+import packageJson from "../package.json";
+
+export const LISTEN_VERSION = packageJson.version;
