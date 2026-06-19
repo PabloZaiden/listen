@@ -5,6 +5,7 @@ import { afterEach, beforeEach } from "bun:test";
 import { closeDatabaseForTests, initializeDatabase } from "../src/persistence/database";
 import { resetEventEmitterForTests } from "../src/core/event-emitter";
 import { resetConnectionsForTests } from "../src/api/websocket/connection";
+import { setBrowserPushSenderForTests } from "../src/core/browser-push";
 
 let dataDir: string;
 let homeDir: string;
@@ -22,6 +23,7 @@ beforeEach(() => {
 afterEach(() => {
   resetConnectionsForTests();
   resetEventEmitterForTests();
+  setBrowserPushSenderForTests();
   closeDatabaseForTests();
   delete process.env["LISTEN_WEBHOOK_URL"];
   delete process.env["LISTEN_WEB_DIST_DIR"];

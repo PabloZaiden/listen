@@ -14,7 +14,7 @@ All protected APIs must stay passkey-protected. The webhook endpoint is the only
 
 ## TypeScript
 
-Keep strict types. Prefer shared contracts from `packages/contracts` and shared limits from `packages/shared`. Use bracket notation for environment variables.
+Keep strict types. Prefer shared contracts from `packages/contracts` and shared limits from `packages/shared`. Use bracket notation for environment variables. All source code must be TypeScript; do not add JavaScript source files. Bun serves and executes TypeScript directly, including browser-facing entrypoints such as service workers.
 
 ## Naming Conventions
 

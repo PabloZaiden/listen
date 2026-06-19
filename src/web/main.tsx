@@ -5,6 +5,7 @@ import remarkGfm from "remark-gfm";
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import type { NotificationDetail, NotificationListItem, PasskeyAuthStatusResponse, SourceResponse } from "@listen/contracts";
 import { appFetch } from "@listen/client-sdk";
+import { BrowserPushSettings } from "./browserPushSettings";
 import { useWebSocket } from "./hooks/useWebSocket";
 import "./styles.css";
 
@@ -26,6 +27,21 @@ type RealtimeEvent =
   | { type: "pong" };
 
 const KILL_SERVER_COUNTDOWN_SECONDS = 15;
+
+function initialView(): View {
+  const notificationId = new URLSearchParams(window.location.search).get("notificationId");
+  return notificationId ? { name: "detail", id: notificationId } : { name: "list" };
+}
+
+function appendHeadLink(rel: string, href: string): void {
+  const link = document.createElement("link");
+  link.rel = rel;
+  link.href = href;
+  document.head.append(link);
+}
+
+appendHeadLink("manifest", "/manifest.webmanifest");
+appendHeadLink("apple-touch-icon", "/icons/apple-touch-icon.png");
 
 async function json<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await appFetch(url, {
@@ -375,6 +391,7 @@ function SettingsView({ refreshConfig }: { refreshConfig: () => Promise<void> })
         <button type="button" onClick={() => void json("/api/passkey-auth/logout", { method: "POST" }).then(refreshConfig)}>Logout</button>
         <button type="button" className="danger" onClick={() => confirm("Delete the configured passkey?") && void json("/api/passkey-auth/passkey", { method: "DELETE" }).then(refreshConfig)}>Delete passkey</button>
       </div>
+      <BrowserPushSettings />
       <div className="danger-zone">
         <h3>Danger Zone</h3>
         <p className="danger-zone-description">
@@ -428,7 +445,7 @@ function App(): React.ReactElement {
   const [sources, refreshSources] = useSources();
   const [notifications, setNotifications] = useState<NotificationListItem[]>([]);
   const [sourceId, setSourceId] = useState("");
-  const [view, setView] = useState<View>({ name: "list" });
+  const [view, setView] = useState<View>(initialView);
 
   const authenticated = Boolean(config?.passkeyAuth.authenticated);
   const ws = useWebSocket(authenticated ? "/api/ws" : undefined);

@@ -2,6 +2,7 @@ import { webhookNotificationRequestSchema } from "@listen/contracts";
 import { createNotificationFromWebhook } from "../core/notifications";
 import { getSourceForWebhook, markSourceUsed } from "../core/sources";
 import { verifyWebhookToken } from "../core/webhook-tokens";
+import { getRequestOrigin } from "../core/request-origin";
 import { errorResponse, jsonResponse, methodNotAllowed } from "./helpers";
 import { parseJsonBody, parseWithSchema, RequestValidationError } from "./validation";
 
@@ -30,7 +31,7 @@ export async function handleWebhook(req: Request): Promise<Response | undefined>
 
   try {
     const payload = parseWithSchema(webhookNotificationRequestSchema, await parseJsonBody(req));
-    const notification = createNotificationFromWebhook(payload, { id: source.id, name: source.name });
+    const notification = createNotificationFromWebhook(payload, { id: source.id, name: source.name }, { publicOrigin: getRequestOrigin(req).origin });
     markSourceUsed(source.id);
     return jsonResponse({ id: notification.id }, { status: 201 });
   } catch (error) {

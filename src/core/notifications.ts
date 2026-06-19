@@ -8,7 +8,11 @@ import {
   markNotificationOpened,
   type PersistedNotification,
 } from "../persistence/notifications";
+import { sendBrowserPushNotification } from "./browser-push";
 import { emit } from "./event-emitter";
+import { createLogger } from "./logger";
+
+const log = createLogger("notifications");
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -58,6 +62,7 @@ function toNotificationDetail(notification: PersistedNotification): Notification
 export function createNotificationFromWebhook(
   payload: WebhookNotificationRequest,
   source: { id: string; name: string },
+  options: { publicOrigin: string },
 ): NotificationListItem {
   const notification: PersistedNotification = {
     id: crypto.randomUUID(),
@@ -72,6 +77,9 @@ export function createNotificationFromWebhook(
   insertNotification(notification);
   const item = toNotificationListItem(notification);
   emit({ type: "notification.created", notification: item });
+  void sendBrowserPushNotification(item, options.publicOrigin).catch((error) => {
+    log.warn("Browser push notification fanout failed", { error });
+  });
   return item;
 }
 

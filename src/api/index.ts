@@ -1,4 +1,5 @@
 import type { Server } from "bun";
+import { handleBrowserPush } from "./browser-push";
 import { configRoute } from "./config";
 import { handleNotifications } from "./notifications";
 import { handlePasskeyAuth } from "./passkey-auth";
@@ -99,6 +100,11 @@ export async function handleApiRequest(req: Request, config: ServerConfig, serve
     const notificationRoute = handleNotifications(req);
     if (notificationRoute) {
       return notificationRoute;
+    }
+
+    const browserPushRoute = await handleBrowserPush(req);
+    if (browserPushRoute) {
+      return browserPushRoute;
     }
 
     return notFound();
