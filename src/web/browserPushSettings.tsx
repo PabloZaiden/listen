@@ -25,7 +25,7 @@ function browserSupportsPush(): boolean {
   return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 }
 
-function base64UrlToUint8Array(value: string): Uint8Array<ArrayBuffer> {
+export function base64UrlToUint8Array(value: string): Uint8Array<ArrayBuffer> {
   const padding = "=".repeat((4 - (value.length % 4)) % 4);
   const base64 = `${value}${padding}`.replaceAll("-", "+").replaceAll("_", "/");
   const raw = atob(base64);
@@ -34,6 +34,18 @@ function base64UrlToUint8Array(value: string): Uint8Array<ArrayBuffer> {
     bytes[index] = raw.charCodeAt(index);
   }
   return bytes;
+}
+
+export function applicationServerKeyMatches(subscription: PushSubscription, applicationServerKey: Uint8Array): boolean {
+  const existingKey = subscription.options.applicationServerKey;
+  if (!existingKey) {
+    return false;
+  }
+  const existingBytes = new Uint8Array(existingKey);
+  if (existingBytes.length !== applicationServerKey.length) {
+    return false;
+  }
+  return existingBytes.every((byte, index) => byte === applicationServerKey[index]);
 }
 
 function toBrowserPushSubscription(subscription: PushSubscription): BrowserPushSubscription {
@@ -56,11 +68,42 @@ async function registerServiceWorker(): Promise<ServiceWorkerRegistration> {
   return navigator.serviceWorker.ready;
 }
 
+async function getApplicationServerKey(signal?: AbortSignal): Promise<Uint8Array<ArrayBuffer>> {
+  return base64UrlToUint8Array((await apiJson<BrowserPushConfigResponse>("/api/browser-push/config", { signal })).publicKey);
+}
+
 async function saveSubscription(subscription: PushSubscription, signal?: AbortSignal): Promise<void> {
   await apiJson<BrowserPushStatusResponse>("/api/browser-push/subscriptions", {
     method: "POST",
     signal,
     body: JSON.stringify({ subscription: toBrowserPushSubscription(subscription) }),
+  });
+}
+
+async function deleteSavedSubscription(subscription: PushSubscription, signal?: AbortSignal): Promise<void> {
+  await apiJson<BrowserPushStatusResponse>("/api/browser-push/subscriptions", {
+    method: "DELETE",
+    signal,
+    body: JSON.stringify({ endpoint: toBrowserPushSubscription(subscription).endpoint }),
+  });
+}
+
+async function ensureCurrentBrowserPushSubscription(
+  registration: ServiceWorkerRegistration,
+  applicationServerKey: Uint8Array<ArrayBuffer>,
+  signal?: AbortSignal,
+): Promise<PushSubscription> {
+  const existing = await registration.pushManager.getSubscription();
+  if (existing && applicationServerKeyMatches(existing, applicationServerKey)) {
+    return existing;
+  }
+  if (existing) {
+    await deleteSavedSubscription(existing, signal);
+    await existing.unsubscribe();
+  }
+  return registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey,
   });
 }
 
@@ -78,10 +121,15 @@ function useBrowserPushSettings(): [BrowserPushState, { subscribe: () => Promise
     }
 
     const registration = await registerServiceWorker();
-    const subscription = await registration.pushManager.getSubscription();
+    let subscription = await registration.pushManager.getSubscription();
     if (!subscription) {
       setState({ status: "unsubscribed", busy: false });
       return;
+    }
+
+    const applicationServerKey = await getApplicationServerKey(signal);
+    if (!applicationServerKeyMatches(subscription, applicationServerKey)) {
+      subscription = await ensureCurrentBrowserPushSubscription(registration, applicationServerKey, signal);
     }
 
     const payload = toBrowserPushSubscription(subscription);
@@ -127,11 +175,7 @@ function useBrowserPushSettings(): [BrowserPushState, { subscribe: () => Promise
       }
 
       const registration = await registerServiceWorker();
-      const existing = await registration.pushManager.getSubscription();
-      const subscription = existing ?? await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: base64UrlToUint8Array((await apiJson<BrowserPushConfigResponse>("/api/browser-push/config")).publicKey),
-      });
+      const subscription = await ensureCurrentBrowserPushSubscription(registration, await getApplicationServerKey());
       await saveSubscription(subscription);
       setState({ status: "subscribed", busy: false });
     } catch (error) {

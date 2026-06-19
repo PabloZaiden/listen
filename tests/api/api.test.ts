@@ -4,6 +4,7 @@ import { createFetchHandler } from "../../src/server";
 import { readServerConfig, type ServerConfig } from "../../src/core/server-config";
 import { handleServerControl, scheduleServerShutdown } from "../../src/api/server-control";
 import { setBrowserPushSenderForTests } from "../../src/core/browser-push";
+import { getLogLevel } from "../../src/core/logger";
 import { getBrowserPushSubscriptionByEndpoint } from "../../src/persistence/browser-push";
 
 async function request(path: string, init?: RequestInit, config?: Partial<ServerConfig>): Promise<Response> {
@@ -134,6 +135,36 @@ describe("API", () => {
       passkeyRequired: true,
       authenticated: false,
     });
+  });
+
+  test("log level preference can be changed at runtime", async () => {
+    const initial = await json<{ level: string; defaultLevel: string; availableLevels: string[]; isFromEnv: boolean }>(await request("/api/preferences/log-level"));
+    expect(initial.level).toBe("info");
+    expect(initial.defaultLevel).toBe("info");
+    expect(initial.availableLevels).toContain("trace");
+    expect(initial.isFromEnv).toBe(false);
+
+    const update = await request("/api/preferences/log-level", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ level: "trace" }),
+    });
+    expect(update.status).toBe(200);
+    expect(await json<{ level: string }>(update)).toMatchObject({ level: "trace" });
+    expect(getLogLevel()).toBe("trace");
+
+    const updated = await json<{ level: string }>(await request("/api/preferences/log-level"));
+    expect(updated.level).toBe("trace");
+  });
+
+  test("log level preference rejects invalid levels", async () => {
+    const response = await request("/api/preferences/log-level", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ level: "verbose" }),
+    });
+    expect(response.status).toBe(400);
+    expect(await json(response)).toMatchObject({ error: "validation_failed" });
   });
 
   test("source creation returns webhook URL only from create and list omits it", async () => {

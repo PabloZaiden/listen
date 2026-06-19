@@ -17,11 +17,12 @@ import {
   type PersistedBrowserPushSubscription,
   type PersistedVapidKeys,
 } from "../persistence/browser-push";
-import { createLogger } from "./logger";
+import { createLogger, errorLogFields } from "./logger";
 import { getRequestOrigin } from "./request-origin";
 
 const log = createLogger("browser-push");
 const PUSH_TTL_SECONDS = 60 * 60;
+const DEFAULT_VAPID_SUBJECT = "mailto:listen@example.com";
 
 type BrowserPushSender = (subscription: webPush.PushSubscription, payload: string, options: webPush.RequestOptions) => Promise<webPush.SendResult>;
 
@@ -42,6 +43,7 @@ interface BrowserPushPayload {
 
 interface WebPushStatusError {
   statusCode?: number;
+  body?: unknown;
 }
 
 function nowIso(): string {
@@ -55,20 +57,36 @@ function getOrCreateVapidKeys(): PersistedVapidKeys {
   }
   const generated = webPush.generateVAPIDKeys();
   setPersistedVapidKeys(generated);
+  log.info("Generated browser push VAPID keys");
   return generated;
 }
 
-function toVapidSubject(publicOrigin: string): string {
+function endpointOrigin(endpoint: string): string | undefined {
   try {
-    return new URL(publicOrigin).protocol === "https:" ? publicOrigin : "mailto:listen@localhost";
+    return new URL(endpoint).origin;
   } catch {
-    return "mailto:listen@localhost";
+    return undefined;
+  }
+}
+
+export function toVapidSubject(publicOrigin: string): string {
+  const configuredSubject = process.env["LISTEN_VAPID_SUBJECT"]?.trim();
+  if (configuredSubject) {
+    return configuredSubject;
+  }
+  try {
+    return new URL(publicOrigin).protocol === "https:" ? publicOrigin : DEFAULT_VAPID_SUBJECT;
+  } catch {
+    return DEFAULT_VAPID_SUBJECT;
   }
 }
 
 export function getBrowserPushConfig(req: Request): BrowserPushConfigResponse {
   const keys = getOrCreateVapidKeys();
-  webPush.setVapidDetails(toVapidSubject(getRequestOrigin(req).origin), keys.publicKey, keys.privateKey);
+  const requestOrigin = getRequestOrigin(req).origin;
+  const vapidSubject = toVapidSubject(requestOrigin);
+  webPush.setVapidDetails(vapidSubject, keys.publicKey, keys.privateKey);
+  log.trace("Browser push config requested", { requestOrigin, vapidSubject });
   return { publicKey: keys.publicKey };
 }
 
@@ -89,17 +107,29 @@ function toPersistedSubscription(subscription: BrowserPushSubscription, req: Req
 }
 
 export function subscribeBrowserPush(subscription: BrowserPushSubscription, req: Request): BrowserPushStatusResponse {
-  upsertBrowserPushSubscription(toPersistedSubscription(subscription, req));
+  const persisted = upsertBrowserPushSubscription(toPersistedSubscription(subscription, req));
+  log.info("Browser push subscription saved", {
+    subscriptionId: persisted.id,
+    endpointOrigin: endpointOrigin(persisted.endpoint),
+    userAgent: persisted.userAgent,
+  });
   return { subscribed: true };
 }
 
 export function getBrowserPushSubscriptionStatus(endpoint: string): BrowserPushStatusResponse {
   const subscription = getBrowserPushSubscriptionByEndpoint(endpoint);
+  log.trace("Browser push subscription status checked", {
+    subscriptionId: subscription?.id,
+    endpointOrigin: endpointOrigin(endpoint),
+    subscribed: Boolean(subscription && !subscription.disabledAt),
+    disabled: Boolean(subscription?.disabledAt),
+  });
   return { subscribed: Boolean(subscription && !subscription.disabledAt) };
 }
 
 export function unsubscribeBrowserPush(endpoint: string): BrowserPushStatusResponse {
-  deleteBrowserPushSubscriptionByEndpoint(endpoint);
+  const deleted = deleteBrowserPushSubscriptionByEndpoint(endpoint);
+  log.info("Browser push subscription delete requested", { endpointOrigin: endpointOrigin(endpoint), deleted });
   return { subscribed: false };
 }
 
@@ -118,6 +148,14 @@ function getFailureStatusCode(error: unknown): number | undefined {
   return typeof error === "object" && error !== null && "statusCode" in error
     ? (error as WebPushStatusError).statusCode
     : undefined;
+}
+
+function getFailureBody(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null || !("body" in error)) {
+    return undefined;
+  }
+  const body = (error as WebPushStatusError).body;
+  return typeof body === "string" ? body.slice(0, 500) : undefined;
 }
 
 function isPermanentPushFailure(error: unknown): boolean {
@@ -153,26 +191,55 @@ async function sendOneBrowserPush(subscription: PersistedBrowserPushSubscription
   try {
     await browserPushSender(toWebPushSubscription(subscription), JSON.stringify(payload), { TTL: PUSH_TTL_SECONDS });
     markBrowserPushSubscriptionSucceeded(subscription.endpoint, nowIso());
+    log.info("Browser push delivery succeeded", {
+      subscriptionId: subscription.id,
+      endpointOrigin: endpointOrigin(subscription.endpoint),
+      notificationId: payload.data.notificationId,
+    });
   } catch (error) {
     if (isPermanentPushFailure(error)) {
       deleteBrowserPushSubscriptionByEndpoint(subscription.endpoint);
-      log.info("Removed expired browser push subscription", { statusCode: getFailureStatusCode(error) });
+      log.info("Removed expired browser push subscription", {
+        subscriptionId: subscription.id,
+        endpointOrigin: endpointOrigin(subscription.endpoint),
+        notificationId: payload.data.notificationId,
+        statusCode: getFailureStatusCode(error),
+        body: getFailureBody(error),
+      });
       return;
     }
     const failedAt = new Date();
-    markBrowserPushSubscriptionFailed(subscription.endpoint, failedAt.toISOString(), nextFailureAttempt(subscription.failureCount, failedAt));
-    log.warn("Browser push delivery failed", { statusCode: getFailureStatusCode(error) });
+    const nextAttemptAt = nextFailureAttempt(subscription.failureCount, failedAt);
+    markBrowserPushSubscriptionFailed(subscription.endpoint, failedAt.toISOString(), nextAttemptAt);
+    log.warn("Browser push delivery failed", {
+      subscriptionId: subscription.id,
+      endpointOrigin: endpointOrigin(subscription.endpoint),
+      notificationId: payload.data.notificationId,
+      failureCount: subscription.failureCount + 1,
+      nextAttemptAt,
+      statusCode: getFailureStatusCode(error),
+      body: getFailureBody(error),
+      ...errorLogFields(error),
+    });
   }
 }
 
 export async function sendBrowserPushNotification(notification: NotificationListItem, publicOrigin: string): Promise<void> {
   const subscriptions = listActiveBrowserPushSubscriptions(Date.now(), nowIso());
   if (subscriptions.length === 0) {
+    log.trace("Browser push fanout skipped because no active subscriptions are available", { notificationId: notification.id });
     return;
   }
   const keys = getOrCreateVapidKeys();
-  webPush.setVapidDetails(toVapidSubject(publicOrigin), keys.publicKey, keys.privateKey);
+  const vapidSubject = toVapidSubject(publicOrigin);
+  webPush.setVapidDetails(vapidSubject, keys.publicKey, keys.privateKey);
   const payload = toPushPayload(notification);
+  log.info("Browser push fanout started", {
+    notificationId: notification.id,
+    subscriptionCount: subscriptions.length,
+    publicOrigin,
+    vapidSubject,
+  });
   await Promise.all(subscriptions.map((subscription) => sendOneBrowserPush(subscription, payload)));
 }
 

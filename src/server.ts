@@ -6,6 +6,8 @@ import { websocketHandlers } from "./api/websocket";
 import type { WebSocketData } from "./api/websocket/types";
 import { readServerConfig, type ServerConfig } from "./core/server-config";
 import { createLogger } from "./core/logger";
+import { getLogLevelPreference } from "./persistence/preferences";
+import { isLogLevelFromEnv, setLogLevel } from "./core/logger";
 import webIndex from "./index.html";
 
 const log = createLogger("server");
@@ -164,6 +166,13 @@ export function createFetchHandler(config: ServerConfig): (req: Request, server?
 
 export function startServer(config = readServerConfig()): Server<WebSocketData> {
   initializeDatabase(config.dataDir);
+  if (!isLogLevelFromEnv()) {
+    const savedLogLevel = getLogLevelPreference();
+    setLogLevel(savedLogLevel);
+    log.debug("Log level set from saved preference", { level: savedLogLevel });
+  } else {
+    log.debug("Log level set from LISTEN_LOG_LEVEL environment variable");
+  }
   log.info(`Listen server starting on ${config.host}:${config.port}`);
   if (config.sameOriginCheckDisabled) {
     log.warn("Same-origin protection is disabled");

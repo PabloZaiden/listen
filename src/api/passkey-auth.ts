@@ -9,8 +9,11 @@ import {
   verifyAuthentication,
   verifyRegistration,
 } from "../core/passkey-auth";
+import { createLogger, errorLogFields } from "../core/logger";
 import { errorResponse, jsonResponse, successResponse } from "./helpers";
 import { parseJsonBody, RequestValidationError } from "./validation";
+
+const log = createLogger("api:passkey-auth");
 
 export async function handlePasskeyAuth(req: Request, config: ServerConfig): Promise<Response | undefined> {
   const url = new URL(req.url);
@@ -45,8 +48,10 @@ export async function handlePasskeyAuth(req: Request, config: ServerConfig): Pro
     return undefined;
   } catch (error) {
     if (error instanceof RequestValidationError) {
+      log.warn("Passkey auth request validation failed", { path: url.pathname, method: req.method, message: error.message });
       return error.response;
     }
+    log.warn("Passkey auth operation failed", { path: url.pathname, method: req.method, ...errorLogFields(error) });
     return errorResponse(400, "passkey_auth_failed", error instanceof Error ? error.message : "Passkey authentication failed");
   }
 }

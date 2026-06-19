@@ -10,7 +10,7 @@ import {
 } from "../persistence/notifications";
 import { sendBrowserPushNotification } from "./browser-push";
 import { emit } from "./event-emitter";
-import { createLogger } from "./logger";
+import { createLogger, errorLogFields } from "./logger";
 
 const log = createLogger("notifications");
 
@@ -77,8 +77,9 @@ export function createNotificationFromWebhook(
   insertNotification(notification);
   const item = toNotificationListItem(notification);
   emit({ type: "notification.created", notification: item });
+  log.info("Notification created", { notificationId: item.id, sourceId: item.sourceId, source: item.source });
   void sendBrowserPushNotification(item, options.publicOrigin).catch((error) => {
-    log.warn("Browser push notification fanout failed", { error });
+    log.warn("Browser push notification fanout failed", { notificationId: item.id, sourceId: item.sourceId, ...errorLogFields(error) });
   });
   return item;
 }
@@ -100,14 +101,17 @@ export function listNotifications(options: ListNotificationsOptions): ListNotifi
 export function openNotification(id: string): NotificationDetail | undefined {
   const existing = getNotificationById(id);
   if (!existing) {
+    log.warn("Notification open requested but notification was not found", { notificationId: id });
     return undefined;
   }
   const opened = existing.openedAt ? existing : markNotificationOpened(id, nowIso());
   if (!opened) {
+    log.warn("Notification open update failed after lookup", { notificationId: id });
     return undefined;
   }
   if (!existing.openedAt) {
     emit({ type: "notification.opened", notification: toNotificationListItem(opened) });
+    log.info("Notification opened", { notificationId: id, sourceId: opened.sourceId });
   }
   return toNotificationDetail(opened);
 }
@@ -115,11 +119,13 @@ export function openNotification(id: string): NotificationDetail | undefined {
 export function deleteNotification(id: string): boolean {
   const existing = getNotificationById(id);
   if (!existing) {
+    log.warn("Notification delete requested but notification was not found", { notificationId: id });
     return false;
   }
   const deleted = deleteNotificationById(id);
   if (deleted) {
     emit({ type: "notification.deleted", notificationId: id, sourceId: existing.sourceId });
+    log.info("Notification deleted", { notificationId: id, sourceId: existing.sourceId });
   }
   return deleted;
 }
@@ -127,5 +133,6 @@ export function deleteNotification(id: string): boolean {
 export function deleteNotifications(sourceId?: string): number {
   const deletedCount = deletePersistedNotifications(sourceId);
   emit({ type: "notifications.deleted", sourceId, deletedCount });
+  log.info("Notifications deleted", { sourceId, deletedCount });
   return deletedCount;
 }

@@ -3,7 +3,8 @@ import { createRoot } from "react-dom/client";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
-import type { NotificationDetail, NotificationListItem, PasskeyAuthStatusResponse, SourceResponse } from "@listen/contracts";
+import type { LogLevelPreferenceResponse, NotificationDetail, NotificationListItem, PasskeyAuthStatusResponse, SourceResponse } from "@listen/contracts";
+import type { LogLevelName } from "@listen/shared";
 import { appFetch } from "@listen/client-sdk";
 import { BrowserPushSettings } from "./browserPushSettings";
 import { useWebSocket } from "./hooks/useWebSocket";
@@ -356,6 +357,59 @@ function NotificationDetailView({ id, back }: { id: string; back: () => void }):
   );
 }
 
+function LogLevelSettings(): React.ReactElement {
+  const [preference, setPreference] = useState<LogLevelPreferenceResponse>();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+
+  const refresh = useCallback(async () => {
+    setPreference(await json<LogLevelPreferenceResponse>("/api/preferences/log-level"));
+  }, []);
+
+  useEffect(() => {
+    void refresh().catch((err) => setError(err instanceof Error ? err.message : String(err)));
+  }, [refresh]);
+
+  async function updateLevel(level: LogLevelName): Promise<void> {
+    setBusy(true);
+    setError(undefined);
+    try {
+      const response = await json<{ level: LogLevelName }>("/api/preferences/log-level", {
+        method: "PUT",
+        body: JSON.stringify({ level }),
+      });
+      setPreference((current) => current ? { ...current, level: response.level } : current);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="settings-card" aria-live="polite">
+      <div>
+        <h3>Log level</h3>
+        <p>{preference?.isFromEnv ? "Controlled by LISTEN_LOG_LEVEL." : "Change server log verbosity at runtime."}</p>
+        {error ? <p className="error">{error}</p> : null}
+      </div>
+      <div className="settings-card-actions">
+        <select
+          aria-label="Log level"
+          value={preference?.level ?? "info"}
+          onChange={(event) => void updateLevel(event.target.value as LogLevelName)}
+          disabled={busy || !preference || preference.isFromEnv}
+        >
+          {(preference?.availableLevels ?? ["info"]).map((level) => (
+            <option key={level} value={level}>{level}</option>
+          ))}
+        </select>
+      </div>
+    </section>
+  );
+}
+
 function SettingsView({ refreshConfig }: { refreshConfig: () => Promise<void> }): React.ReactElement {
   const [showKillConfirm, setShowKillConfirm] = useState(false);
   const [serverKilled, setServerKilled] = useState(false);
@@ -391,6 +445,7 @@ function SettingsView({ refreshConfig }: { refreshConfig: () => Promise<void> })
         <button type="button" onClick={() => void json("/api/passkey-auth/logout", { method: "POST" }).then(refreshConfig)}>Logout</button>
         <button type="button" className="danger" onClick={() => confirm("Delete the configured passkey?") && void json("/api/passkey-auth/passkey", { method: "DELETE" }).then(refreshConfig)}>Delete passkey</button>
       </div>
+      <LogLevelSettings />
       <BrowserPushSettings />
       <div className="danger-zone">
         <h3>Danger Zone</h3>

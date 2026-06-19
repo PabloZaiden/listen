@@ -1,5 +1,5 @@
 import type { NotificationListItem, SourceResponse } from "@listen/contracts";
-import { createLogger } from "./logger";
+import { createLogger, errorLogFields } from "./logger";
 
 export type ListenRealtimeEvent =
   | { type: "notification.created"; notification: NotificationListItem }
@@ -17,15 +17,20 @@ const listeners = new Set<ListenRealtimeListener>();
 
 export function subscribe(listener: ListenRealtimeListener): () => void {
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  log.trace("Realtime listener subscribed", { listenerCount: listeners.size });
+  return () => {
+    listeners.delete(listener);
+    log.trace("Realtime listener unsubscribed", { listenerCount: listeners.size });
+  };
 }
 
 export function emit(event: ListenRealtimeEvent): void {
+  log.trace("Realtime event emitted", { type: event.type, listenerCount: listeners.size });
   for (const listener of listeners) {
     try {
       listener(event);
     } catch (error) {
-      log.warn("Realtime listener failed", { error });
+      log.warn("Realtime listener failed", { type: event.type, ...errorLogFields(error) });
     }
   }
 }
