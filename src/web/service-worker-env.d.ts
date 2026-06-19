@@ -4,6 +4,7 @@ interface ListenPushPayload {
   icon?: unknown;
   badge?: unknown;
   tag?: unknown;
+  unreadCount?: unknown;
   data?: ListenNotificationData | null;
 }
 
@@ -44,6 +45,10 @@ interface ListenServiceWorkerRegistration {
 interface Window {
   registration: ListenServiceWorkerRegistration;
   clients: ListenClients;
+  navigator: Navigator & {
+    setAppBadge?: (contents?: number) => Promise<void>;
+    clearAppBadge?: () => Promise<void>;
+  };
   addEventListener(type: "push", listener: (event: ListenPushEvent) => void): void;
   addEventListener(type: "notificationclick", listener: (event: ListenNotificationClickEvent) => void): void;
 }

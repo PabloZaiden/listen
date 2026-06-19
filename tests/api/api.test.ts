@@ -231,6 +231,7 @@ describe("API", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title: "A", shortDescription: "B", markdownContent: "C" }),
     });
+
     const notification = await json<{ id: string }>(webhookResponse);
     const detailResponse = await request(`/api/notifications/${notification.id}`);
     const detail = await json<{ notification: { openedAt: string; markdownContent: string } }>(detailResponse);
@@ -240,6 +241,44 @@ describe("API", () => {
     expect(deleteResponse.status).toBe(200);
     const missingResponse = await request(`/api/notifications/${notification.id}`);
     expect(missingResponse.status).toBe(404);
+  });
+
+  test("notification list returns global unread count after open and delete changes", async () => {
+    const initial = await json<{ unreadCount: number }>(await request("/api/notifications"));
+    const first = await createSource();
+    const secondResponse = await request("/api/sources", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Other" }),
+    });
+    const second = await json<{ source: { id: string }; webhookUrl: string }>(secondResponse);
+
+    const firstWebhook = await webhook(first.webhookUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "First", shortDescription: "One", markdownContent: "First body" }),
+    });
+    const secondWebhook = await webhook(second.webhookUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "Second", shortDescription: "Two", markdownContent: "Second body" }),
+    });
+    const firstNotification = await json<{ id: string }>(firstWebhook);
+    const secondNotification = await json<{ id: string }>(secondWebhook);
+
+    const filteredList = await json<{ notifications: unknown[]; unreadCount: number }>(
+      await request(`/api/notifications?sourceId=${first.source.id}`),
+    );
+    expect(filteredList.notifications).toHaveLength(1);
+    expect(filteredList.unreadCount).toBe(initial.unreadCount + 2);
+
+    await request(`/api/notifications/${firstNotification.id}`);
+    const afterOpen = await json<{ unreadCount: number }>(await request("/api/notifications"));
+    expect(afterOpen.unreadCount).toBe(initial.unreadCount + 1);
+
+    await request(`/api/notifications/${secondNotification.id}`, { method: "DELETE" });
+    const afterDelete = await json<{ unreadCount: number }>(await request("/api/notifications"));
+    expect(afterDelete.unreadCount).toBe(initial.unreadCount);
   });
 
   test("bulk delete can target one source or all", async () => {
@@ -332,6 +371,7 @@ describe("API", () => {
           const parsed = payloads.map((entry) => JSON.parse(entry) as Record<string, unknown>);
           expect(parsed.every((entry) => entry["title"] === "Done")).toBe(true);
           expect(parsed.every((entry) => entry["body"] === "Finished")).toBe(true);
+          expect(parsed.every((entry) => entry["unreadCount"] === 1)).toBe(true);
           expect(parsed.every((entry) => entry["markdownContent"] === undefined)).toBe(true);
           expect(parsed.every((entry) => typeof (entry["data"] as Record<string, unknown> | undefined)?.["url"] === "string")).toBe(true);
           resolve();

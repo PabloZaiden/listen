@@ -2,10 +2,10 @@ import type { NotificationListItem, SourceResponse } from "@listen/contracts";
 import { createLogger, errorLogFields } from "./logger";
 
 export type ListenRealtimeEvent =
-  | { type: "notification.created"; notification: NotificationListItem }
-  | { type: "notification.opened"; notification: NotificationListItem }
-  | { type: "notification.deleted"; notificationId: string; sourceId?: string }
-  | { type: "notifications.deleted"; sourceId?: string; deletedCount: number }
+  | { type: "notification.created"; notification: NotificationListItem; unreadCount: number }
+  | { type: "notification.opened"; notification: NotificationListItem; unreadCount: number }
+  | { type: "notification.deleted"; notificationId: string; sourceId?: string; unreadCount: number }
+  | { type: "notifications.deleted"; sourceId?: string; deletedCount: number; unreadCount: number }
   | { type: "source.created"; source: SourceResponse }
   | { type: "source.updated"; source: SourceResponse }
   | { type: "source.deleted"; sourceId: string };

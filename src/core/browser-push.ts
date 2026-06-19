@@ -32,6 +32,7 @@ let browserPushSender: BrowserPushSender = defaultBrowserPushSender;
 interface BrowserPushPayload {
   title: string;
   body: string;
+  unreadCount: number;
   data: {
     notificationId: string;
     url: string;
@@ -172,11 +173,12 @@ function nextFailureAttempt(failureCount: number, failedAt: Date): string {
   return new Date(failedAt.getTime() + delayMs).toISOString();
 }
 
-function toPushPayload(notification: NotificationListItem): BrowserPushPayload {
+function toPushPayload(notification: NotificationListItem, unreadCount: number): BrowserPushPayload {
   const url = `/?notificationId=${encodeURIComponent(notification.id)}`;
   return {
     title: notification.title,
     body: notification.shortDescription,
+    unreadCount,
     data: {
       notificationId: notification.id,
       url,
@@ -224,7 +226,7 @@ async function sendOneBrowserPush(subscription: PersistedBrowserPushSubscription
   }
 }
 
-export async function sendBrowserPushNotification(notification: NotificationListItem, publicOrigin: string): Promise<void> {
+export async function sendBrowserPushNotification(notification: NotificationListItem, unreadCount: number, publicOrigin: string): Promise<void> {
   const subscriptions = listActiveBrowserPushSubscriptions(Date.now(), nowIso());
   if (subscriptions.length === 0) {
     log.trace("Browser push fanout skipped because no active subscriptions are available", { notificationId: notification.id });
@@ -233,7 +235,7 @@ export async function sendBrowserPushNotification(notification: NotificationList
   const keys = getOrCreateVapidKeys();
   const vapidSubject = toVapidSubject(publicOrigin);
   webPush.setVapidDetails(vapidSubject, keys.publicKey, keys.privateKey);
-  const payload = toPushPayload(notification);
+  const payload = toPushPayload(notification, unreadCount);
   log.info("Browser push fanout started", {
     notificationId: notification.id,
     subscriptionCount: subscriptions.length,
