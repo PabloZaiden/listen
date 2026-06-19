@@ -93,33 +93,6 @@ function manifestHeaders(): HeadersInit {
   };
 }
 
-function webDistFileHeaders(filePath: string): HeadersInit {
-  const extension = pathPosix.extname(filePath).toLowerCase();
-  const contentType = {
-    ".css": "text/css; charset=utf-8",
-    ".html": "text/html; charset=utf-8",
-    ".js": "text/javascript; charset=utf-8",
-    ".json": "application/json; charset=utf-8",
-    ".map": "application/json; charset=utf-8",
-    ".mjs": "text/javascript; charset=utf-8",
-    ".png": "image/png",
-    ".svg": "image/svg+xml",
-    ".txt": "text/plain; charset=utf-8",
-    ".webmanifest": "application/manifest+json; charset=utf-8",
-  }[extension];
-
-  return { "content-type": contentType ?? "application/octet-stream" };
-}
-
-function textResponse(body: string, init?: ResponseInit): Response {
-  const headers = new Headers(init?.headers);
-  headers.set("content-type", "text/plain; charset=utf-8");
-  return new Response(body, {
-    ...init,
-    headers,
-  });
-}
-
 async function serveSourceServiceWorker(): Promise<Response> {
   return new Response(Bun.file(`${import.meta.dir}/web/service-worker.ts`), { headers: serviceWorkerHeaders() });
 }
@@ -204,7 +177,7 @@ async function serveSourceWebBundle(req: Request, pathname: string): Promise<Res
     return responseFromBuildArtifact(asset);
   }
   if (!acceptsHtml(req) || looksLikeFileAsset(pathname)) {
-    return textResponse("Not found", { status: 404 });
+    return new Response("Not found", { status: 404 });
   }
   return responseFromBuildArtifact(build.index);
 }
@@ -229,7 +202,7 @@ async function serveWebAppResponse(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const decodedPathname = decodeWebPathname(url.pathname);
   if (decodedPathname === undefined) {
-    return textResponse("Malformed request path", { status: 400 });
+    return new Response("Malformed request path", { status: 400 });
   }
 
   const distDir = getConfiguredWebDistDir();
@@ -245,24 +218,24 @@ async function serveWebAppResponse(req: Request): Promise<Response> {
 
   const assetPath = getWebAssetPath(distDir, decodedPathname);
   if (!assetPath) {
-    return textResponse("Not found", { status: 404 });
+    return new Response("Not found", { status: 404 });
   }
 
   const assetFile = Bun.file(assetPath);
   if (await assetFile.exists()) {
-    return new Response(assetFile, { headers: webDistFileHeaders(assetPath) });
+    return new Response(assetFile);
   }
 
   if (!acceptsHtml(req) || looksLikeFileAsset(decodedPathname)) {
-    return textResponse("Not found", { status: 404 });
+    return new Response("Not found", { status: 404 });
   }
 
   const spaIndex = Bun.file(`${distDir}/index.html`);
   if (await spaIndex.exists()) {
-    return new Response(spaIndex, { headers: webDistFileHeaders("index.html") });
+    return new Response(spaIndex);
   }
 
-  return textResponse("Configured web dist is missing index.html.", { status: 500 });
+  return new Response("Configured web dist is missing index.html.", { status: 500 });
 }
 
 export async function serveWebApp(req: Request): Promise<Response> {

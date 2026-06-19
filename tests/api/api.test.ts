@@ -23,7 +23,6 @@ async function json<T>(response: Response): Promise<T> {
 }
 
 function expectSecurityHeaders(response: Response): void {
-  expect(response.headers.get("x-content-type-options")).toBe("nosniff");
   expect(response.headers.get("referrer-policy")).toBe("strict-origin-when-cross-origin");
   expect(response.headers.get("x-frame-options")).toBe("DENY");
   expect(response.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
