@@ -8,6 +8,7 @@ import type { LogLevelName } from "@listen/shared";
 import { appFetch } from "@listen/client-sdk";
 import { BrowserPushSettings } from "./browserPushSettings";
 import { useWebSocket } from "./hooks/useWebSocket";
+import { normalizeMarkdownForDisplay } from "./markdown";
 import "./styles.css";
 
 interface AppConfig {
@@ -321,6 +322,8 @@ function NotificationDetailView({ id, back }: { id: string; back: () => void }):
     return <section className="panel">Loading...</section>;
   }
 
+  const markdownContent = normalizeMarkdownForDisplay(detail.markdownContent);
+
   return (
     <section className="panel detail">
       <div className="detail-summary">
@@ -347,7 +350,7 @@ function NotificationDetailView({ id, back }: { id: string; back: () => void }):
             a: (props) => <a {...props} target="_blank" rel="noreferrer noopener" />,
           }}
         >
-          {detail.markdownContent}
+          {markdownContent}
         </ReactMarkdown>
       </div>
       <div className="detail-actions">

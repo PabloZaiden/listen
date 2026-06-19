@@ -37,4 +37,28 @@ describe("CLI", () => {
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain("notification-id");
   });
+
+  test("inline notify markdown accepts escaped newlines from shell arguments", async () => {
+    using server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        const body = await req.json() as { markdownContent: string };
+        expect(body.markdownContent).toBe("La última señal **Buy** de StockSim fue el **2025-06-02**.\n\n- Estrategia: BullBearRiskOffStopLoss\n- Tickers: TQQQ, SPY\n- Valor: 2,701,421\n- Razón: Signal");
+        return Response.json({ id: "stock-sim-id" }, { status: 201 });
+      },
+    });
+    process.env["LISTEN_WEBHOOK_URL"] = `http://127.0.0.1:${server.port}/webhook`;
+
+    const result = await runNotifyCommand([
+      "--title",
+      "StockSim: último Buy",
+      "--description",
+      "Último Buy: 2025-06-02",
+      "--markdown",
+      "La última señal **Buy** de StockSim fue el **2025-06-02**.\\n\\n- Estrategia: BullBearRiskOffStopLoss\\n- Tickers: TQQQ, SPY\\n- Valor: 2,701,421\\n- Razón: Signal",
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("stock-sim-id");
+  });
 });

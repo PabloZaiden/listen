@@ -10,7 +10,10 @@ async function readMarkdown(args: string[]): Promise<string | undefined> {
     throw new Error("Require exactly one of --markdown or --markdown-file");
   }
   if (inline) {
-    return inline;
+    return inline
+      .replaceAll("\\r\\n", "\n")
+      .replaceAll("\\n", "\n")
+      .replaceAll("\\r", "\n");
   }
   if (file === "-") {
     return Bun.stdin.text();
