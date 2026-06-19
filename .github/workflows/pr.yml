@@ -30,3 +30,24 @@ jobs:
           curl -fsS http://127.0.0.1:3018/
           curl -fsS http://127.0.0.1:3018/web/styles.css
           kill "$PID"
+      - run: |
+          docker build -t listen-pr-smoke .
+          docker run --rm -d --name listen-pr-smoke -p 3019:8080 \
+            -e LISTEN_DISABLE_PASSKEY=true \
+            -e LISTEN_DISABLE_SAME_ORIGIN_CHECK=true \
+            listen-pr-smoke
+          trap 'docker stop listen-pr-smoke' EXIT
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:3019/api/health && break
+            sleep 1
+          done
+          HTML=$(curl -fsS -D /tmp/listen-root-headers http://127.0.0.1:3019/)
+          grep -qi '^content-type: text/html' /tmp/listen-root-headers
+          JS=$(printf '%s' "$HTML" | sed -n 's/.*src="\.\/\([^"]*\.js\)".*/\1/p')
+          CSS=$(printf '%s' "$HTML" | sed -n 's/.*href="\.\/\([^"]*\.css\)".*/\1/p')
+          test -n "$JS"
+          test -n "$CSS"
+          curl -fsS -D /tmp/listen-js-headers "http://127.0.0.1:3019/$JS" >/dev/null
+          curl -fsS -D /tmp/listen-css-headers "http://127.0.0.1:3019/$CSS" >/dev/null
+          grep -qi '^content-type: .*javascript' /tmp/listen-js-headers
+          grep -qi '^content-type: text/css' /tmp/listen-css-headers

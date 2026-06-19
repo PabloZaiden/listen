@@ -93,6 +93,24 @@ function manifestHeaders(): HeadersInit {
   };
 }
 
+function webDistFileHeaders(filePath: string): HeadersInit {
+  const extension = pathPosix.extname(filePath).toLowerCase();
+  const contentType = {
+    ".css": "text/css; charset=utf-8",
+    ".html": "text/html; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".map": "application/json; charset=utf-8",
+    ".mjs": "text/javascript; charset=utf-8",
+    ".png": "image/png",
+    ".svg": "image/svg+xml",
+    ".txt": "text/plain; charset=utf-8",
+    ".webmanifest": "application/manifest+json; charset=utf-8",
+  }[extension] ?? "application/octet-stream";
+
+  return { "content-type": contentType };
+}
+
 async function serveSourceServiceWorker(): Promise<Response> {
   return new Response(Bun.file(`${import.meta.dir}/web/service-worker.ts`), { headers: serviceWorkerHeaders() });
 }
@@ -223,7 +241,7 @@ async function serveWebAppResponse(req: Request): Promise<Response> {
 
   const assetFile = Bun.file(assetPath);
   if (await assetFile.exists()) {
-    return new Response(assetFile);
+    return new Response(assetFile, { headers: webDistFileHeaders(assetPath) });
   }
 
   if (!acceptsHtml(req) || looksLikeFileAsset(decodedPathname)) {
@@ -232,7 +250,7 @@ async function serveWebAppResponse(req: Request): Promise<Response> {
 
   const spaIndex = Bun.file(`${distDir}/index.html`);
   if (await spaIndex.exists()) {
-    return new Response(spaIndex);
+    return new Response(spaIndex, { headers: webDistFileHeaders("index.html") });
   }
 
   return new Response("Configured web dist is missing index.html.", { status: 500 });
