@@ -12,10 +12,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tini \
   && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/apps/listen/dist/listen /app/listen
+COPY --from=builder /app/apps/web/dist /app/web
 RUN groupadd --system listen && \
     useradd --system --gid listen --no-create-home listen
 RUN mkdir -p /app/data && chown -R listen:listen /app/data
 ENV NODE_ENV=production
+ENV LISTEN_WEB_DIST_DIR=/app/web
 ENV LISTEN_PORT=8080
 ENV LISTEN_HOST=0.0.0.0
 ENV LISTEN_DATA_DIR=/app/data
