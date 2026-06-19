@@ -162,17 +162,12 @@ header nav button {
   box-shadow: inset 3px 0 0 #6b7280;
 }
 
-.notification img,
-.placeholder-icon {
+.notification img {
   width: 2.5rem;
   height: 2.5rem;
   border-radius: 0.75rem;
   flex: 0 0 auto;
   object-fit: cover;
-}
-
-.placeholder-icon {
-  background: var(--surface-subtle);
 }
 
 .link-button {
@@ -453,14 +448,26 @@ code {
     padding: 0.7rem;
   }
 
+  .notification.no-icon {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
   .notification .link-button {
     grid-column: 2;
+  }
+
+  .notification.no-icon .link-button {
+    grid-column: 1;
   }
 
   .notification > .danger {
     grid-column: 3;
     padding: 0.5rem 0.65rem;
     width: auto;
+  }
+
+  .notification.no-icon > .danger {
+    grid-column: 2;
   }
 
   .detail-summary {
@@ -487,15 +494,22 @@ code {
     grid-template-columns: 2.25rem minmax(0, 1fr);
   }
 
-  .notification img,
-  .placeholder-icon {
+  .notification img {
     width: 2.25rem;
     height: 2.25rem;
+  }
+
+  .notification.no-icon {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .notification > .danger {
     grid-column: 2;
     justify-self: start;
     margin-top: 0.25rem;
+  }
+
+  .notification.no-icon > .danger {
+    grid-column: 1;
   }
 }
