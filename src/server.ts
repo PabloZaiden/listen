@@ -75,48 +75,8 @@ function manifestHeaders(): HeadersInit {
   };
 }
 
-let cachedProductionServiceWorker: string | undefined;
-let pendingProductionServiceWorkerBuild: Promise<string | undefined> | undefined;
-
-async function buildServiceWorkerSource(): Promise<string | undefined> {
-  const result = await Bun.build({
-    entrypoints: [`${import.meta.dir}/web/service-worker.ts`],
-    minify: false,
-    target: "browser",
-  });
-  if (!result.success) {
-    log.error("Failed to build service worker", { logs: result.logs });
-    return undefined;
-  }
-  return result.outputs[0]!.text();
-}
-
-async function getBuiltServiceWorkerSource(): Promise<string | undefined> {
-  if (process.env["NODE_ENV"] !== "production") {
-    return buildServiceWorkerSource();
-  }
-
-  if (cachedProductionServiceWorker !== undefined) {
-    return cachedProductionServiceWorker;
-  }
-
-  pendingProductionServiceWorkerBuild ??= buildServiceWorkerSource()
-    .then((source) => {
-      cachedProductionServiceWorker = source;
-      return source;
-    })
-    .finally(() => {
-      pendingProductionServiceWorkerBuild = undefined;
-    });
-  return pendingProductionServiceWorkerBuild;
-}
-
 async function serveSourceServiceWorker(): Promise<Response> {
-  const source = await getBuiltServiceWorkerSource();
-  if (source === undefined) {
-    return new Response("Failed to build service worker", { status: 500 });
-  }
-  return new Response(source, { headers: serviceWorkerHeaders() });
+  return new Response(Bun.file(`${import.meta.dir}/web/service-worker.ts`), { headers: serviceWorkerHeaders() });
 }
 
 async function serveSourceWebAsset(pathname: string): Promise<Response | undefined> {
