@@ -1,12 +1,12 @@
 ---
 name: listen-notifications
-description: 'Send push notifications from coding agents using the listen CLI. Use when: notifying a human that work completed, failed, needs review, needs input, or long-running automation needs attention. Assumes listen is installed, available on PATH, and already configured.'
+description: 'Send push notifications from coding agents using the listen CLI. Use when: notifying a human that work completed, failed, needs review, needs input, or long-running automation needs attention. Assumes listen is installed, available on PATH or in ./.bin/listen , and already configured.'
 argument-hint: '[notification purpose or message]'
 ---
 
 # Listen Notifications
 
-Use this skill to send a push notification to a human through the `listen` CLI. Assume `listen` is already installed, available on `PATH`, and configured with a webhook URL.
+Use this skill to send a push notification to a human through the `listen` CLI. Assume `listen` is already installed, available on `PATH` or in `./.bin/listen`, and configured with a webhook URL.
 
 ## When to Use
 
