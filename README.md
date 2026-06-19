@@ -25,6 +25,10 @@ LISTEN_HOST=0.0.0.0 LISTEN_PORT=3000 listen serve
 
 Native runs default to `127.0.0.1:3000`. Docker uses `0.0.0.0:8080` and stores data in `/app/data`.
 
+## Server operations
+
+The Settings view includes a protected "Kill server" action. It calls `POST /api/server/kill`, returns a success response first, then intentionally terminates the process so containerized deployments can restart it.
+
 ## First passkey setup
 
 All non-public backend operations require passkey authentication unless `LISTEN_DISABLE_PASSKEY=true`, `1`, or `yes` is set for emergency recovery. Passkeys require HTTPS except on localhost.

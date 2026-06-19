@@ -25,6 +25,8 @@ type RealtimeEvent =
   | { type: "connected"; sourceId: string | null }
   | { type: "pong" };
 
+const KILL_SERVER_COUNTDOWN_SECONDS = 15;
+
 async function json<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await appFetch(url, {
     ...init,
@@ -34,6 +36,44 @@ async function json<T>(url: string, init?: RequestInit): Promise<T> {
     },
   });
   return response.json() as Promise<T>;
+}
+
+function computeProgressPercent(countdown: number, total: number): number {
+  if (total <= 0) {
+    return 0;
+  }
+  return (countdown / total) * 100;
+}
+
+function useCountdownReload(active: boolean, onComplete: () => void, durationSeconds = KILL_SERVER_COUNTDOWN_SECONDS): { countdown: number; progressPercent: number } {
+  const [countdown, setCountdown] = useState(durationSeconds);
+  const onCompleteRef = useCallback(onComplete, [onComplete]);
+
+  useEffect(() => {
+    if (!active) {
+      return;
+    }
+
+    setCountdown(durationSeconds);
+    const interval = setInterval(() => {
+      setCountdown((previous) => {
+        const next = previous - 1;
+        if (next <= 0) {
+          clearInterval(interval);
+          onCompleteRef();
+          return 0;
+        }
+        return next;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [active, durationSeconds, onCompleteRef]);
+
+  return {
+    countdown,
+    progressPercent: computeProgressPercent(countdown, durationSeconds),
+  };
 }
 
 function useConfig(): [AppConfig | undefined, () => Promise<void>] {
@@ -300,6 +340,89 @@ function NotificationDetailView({ id, back }: { id: string; back: () => void }):
   );
 }
 
+function SettingsView({ refreshConfig }: { refreshConfig: () => Promise<void> }): React.ReactElement {
+  const [showKillConfirm, setShowKillConfirm] = useState(false);
+  const [serverKilled, setServerKilled] = useState(false);
+  const [killingServer, setKillingServer] = useState(false);
+  const [killError, setKillError] = useState(false);
+
+  const reloadPage = useCallback(() => {
+    window.location.reload();
+  }, []);
+  const { countdown, progressPercent } = useCountdownReload(serverKilled, reloadPage);
+
+  async function killServer(): Promise<void> {
+    setKillingServer(true);
+    setKillError(false);
+    try {
+      const response = await appFetch("/api/server/kill", { method: "POST" });
+      if (!response.ok) {
+        setKillError(true);
+        return;
+      }
+      setServerKilled(true);
+    } catch {
+      setKillError(true);
+    } finally {
+      setKillingServer(false);
+    }
+  }
+
+  return (
+    <section className="panel">
+      <h2>Settings</h2>
+      <div className="settings-actions">
+        <button type="button" onClick={() => void json("/api/passkey-auth/logout", { method: "POST" }).then(refreshConfig)}>Logout</button>
+        <button type="button" className="danger" onClick={() => confirm("Delete the configured passkey?") && void json("/api/passkey-auth/passkey", { method: "DELETE" }).then(refreshConfig)}>Delete passkey</button>
+      </div>
+      <div className="danger-zone">
+        <h3>Danger Zone</h3>
+        <p className="danger-zone-description">
+          Terminate the server process. In containerized environments (k8s), this will restart the container.
+        </p>
+        {serverKilled ? (
+          <div className="shutdown-countdown" aria-live="polite">
+            <div className="shutdown-message">Server is shutting down... Reloading in {countdown}s</div>
+            <div className="shutdown-progress" aria-hidden="true">
+              <div className="shutdown-progress-bar" style={{ width: `${progressPercent}%` }} />
+            </div>
+          </div>
+        ) : !showKillConfirm ? (
+          <button
+            type="button"
+            className="danger"
+            onClick={() => {
+              setKillError(false);
+              setShowKillConfirm(true);
+            }}
+            disabled={killingServer}
+          >
+            Kill server
+          </button>
+        ) : (
+          <div className="confirm-row">
+            <span>Are you sure?</span>
+            <button type="button" className="danger" onClick={() => void killServer()} disabled={killingServer}>
+              {killingServer ? "Killing server..." : "Yes, kill server"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowKillConfirm(false);
+                setKillError(false);
+              }}
+              disabled={killingServer}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+        {killError ? <p className="error">Failed to kill server. Please try again.</p> : null}
+      </div>
+    </section>
+  );
+}
+
 function App(): React.ReactElement {
   const [config, refreshConfig] = useConfig();
   const [sources, refreshSources] = useSources();
@@ -367,15 +490,7 @@ function App(): React.ReactElement {
       ) : null}
       {view.name === "detail" ? <NotificationDetailView id={view.id} back={() => setView({ name: "list" })} /> : null}
       {view.name === "sources" ? <SourceManager sources={sources} refresh={refreshSources} /> : null}
-      {view.name === "settings" ? (
-        <section className="panel">
-          <h2>Settings</h2>
-          <div className="settings-actions">
-            <button type="button" onClick={() => void json("/api/passkey-auth/logout", { method: "POST" }).then(refreshConfig)}>Logout</button>
-            <button type="button" className="danger" onClick={() => confirm("Delete the configured passkey?") && void json("/api/passkey-auth/passkey", { method: "DELETE" }).then(refreshConfig)}>Delete passkey</button>
-          </div>
-        </section>
-      ) : null}
+      {view.name === "settings" ? <SettingsView refreshConfig={refreshConfig} /> : null}
     </main>
   );
 }
