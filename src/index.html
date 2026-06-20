@@ -8,9 +8,23 @@
     <script>
       (() => {
         const key = "listen-theme-preference";
-        const preference = localStorage.getItem(key);
+        const readPreference = () => {
+          try {
+            return window.localStorage?.getItem(key) ?? null;
+          } catch {
+            return null;
+          }
+        };
+        const prefersDark = () => {
+          try {
+            return typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: dark)").matches;
+          } catch {
+            return false;
+          }
+        };
+        const preference = readPreference();
         const theme = preference === "light" || preference === "dark" || preference === "system" ? preference : "system";
-        const resolved = theme === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : theme;
+        const resolved = theme === "system" ? (prefersDark() ? "dark" : "light") : theme;
         document.documentElement.dataset.theme = theme;
         document.documentElement.dataset.resolvedTheme = resolved;
         document.querySelector('meta[name="theme-color"]')?.setAttribute("content", resolved === "dark" ? "#111827" : "#f8fafc");

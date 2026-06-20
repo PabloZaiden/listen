@@ -19,6 +19,13 @@ describe("app routes", () => {
     expect(parsed.error).toBe("That notification link is invalid.");
   });
 
+  test("redirects malformed notification path encoding to inbox with an error", () => {
+    const parsed = parseAppRoute("/notifications/%E0%A4%A");
+
+    expect(parsed.route).toEqual({ name: "inbox" });
+    expect(parsed.error).toBe("That notification link is invalid.");
+  });
+
   test("formats routes", () => {
     expect(routePath({ name: "inbox" })).toBe("/");
     expect(routePath({ name: "notification", id: "id with space" })).toBe("/notifications/id%20with%20space");

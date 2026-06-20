@@ -453,10 +453,15 @@ function InboxView({
               {group.notifications.map((notification) => (
                 <article className={`notification-row ${notification.openedAt ? "read" : "unread"}${notification.icon ? "" : " no-icon"}`} key={notification.id}>
                   {notification.icon ? <img src={notification.icon} alt="" /> : <div className="notification-avatar" aria-hidden="true">{notification.source.slice(0, 1).toUpperCase()}</div>}
-                  <button type="button" className="notification-open" aria-label={`Open notification ${notification.title}`} onClick={() => onOpen(notification.id)}>
+                  <button type="button" className="notification-open" onClick={() => onOpen(notification.id)}>
                     <span className="notification-title-line">
                       <strong>{notification.title}</strong>
-                      {!notification.openedAt ? <span className="unread-dot" aria-label="Unread" /> : null}
+                      {!notification.openedAt ? (
+                        <>
+                          <span className="unread-dot" aria-hidden="true" />
+                          <span className="sr-only">Unread</span>
+                        </>
+                      ) : null}
                     </span>
                     <span>{notification.shortDescription}</span>
                     <small><Badge variant="info">{notification.source}</Badge><span title={formatTimestamp(notification.createdAt)}>{relativeTimestamp(notification.createdAt)}</span></small>
@@ -1038,7 +1043,7 @@ function AppContent(): React.ReactElement {
       return;
     }
     void refreshNotifications().catch((error) => toast.error(error instanceof Error ? error.message : String(error)));
-  }, [inboxFilter, refreshNotifications, search, selectedSourceId, toast, authenticated]);
+  }, [authenticated, refreshNotifications, toast]);
 
   useEffect(() => {
     if (!authenticated) {

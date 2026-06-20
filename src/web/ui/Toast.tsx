@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 type ToastKind = "success" | "error";
 
@@ -17,11 +17,23 @@ const ToastContext = createContext<ToastContextValue | undefined>(undefined);
 
 export function ToastProvider({ children }: { children: React.ReactNode }): React.ReactElement {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const dismissTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const show = useCallback((kind: ToastKind, message: string) => {
     const id = crypto.randomUUID();
     setToasts((current) => [...current, { id, kind, message }]);
-    window.setTimeout(() => setToasts((current) => current.filter((toast) => toast.id !== id)), 4_000);
+    const timer = setTimeout(() => {
+      setToasts((current) => current.filter((toast) => toast.id !== id));
+      dismissTimers.current = dismissTimers.current.filter((dismissTimer) => dismissTimer !== timer);
+    }, 4_000);
+    dismissTimers.current.push(timer);
+  }, []);
+
+  useEffect(() => () => {
+    for (const timer of dismissTimers.current) {
+      clearTimeout(timer);
+    }
+    dismissTimers.current = [];
   }, []);
 
   const value = useMemo<ToastContextValue>(() => ({

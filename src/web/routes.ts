@@ -22,7 +22,12 @@ export function parseAppRoute(pathname: string): ParsedRoute {
 
   const notificationMatch = /^\/notifications\/([^/]+)$/.exec(pathname);
   if (notificationMatch) {
-    const id = decodeURIComponent(notificationMatch[1] ?? "").trim();
+    let id = "";
+    try {
+      id = decodeURIComponent(notificationMatch[1] ?? "").trim();
+    } catch {
+      id = "";
+    }
     if (id.length > 0) {
       return { route: { name: "notification", id } };
     }
