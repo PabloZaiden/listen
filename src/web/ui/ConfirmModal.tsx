@@ -4,12 +4,20 @@ import { Button } from "./Button";
 interface ConfirmModalProps {
   open: boolean;
   title: string;
-  description: string;
+  description?: string;
   confirmLabel: string;
+  cancelLabel?: string;
   confirming?: boolean;
   danger?: boolean;
+  actions?: ConfirmModalAction[];
   onConfirm: () => void;
   onClose: () => void;
+}
+
+interface ConfirmModalAction {
+  label: string;
+  danger?: boolean;
+  onClick: () => void;
 }
 
 export function ConfirmModal({
@@ -17,8 +25,10 @@ export function ConfirmModal({
   title,
   description,
   confirmLabel,
+  cancelLabel = "Cancel",
   confirming = false,
   danger = false,
+  actions,
   onConfirm,
   onClose,
 }: ConfirmModalProps): React.ReactElement | null {
@@ -76,14 +86,18 @@ export function ConfirmModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        aria-describedby={descriptionId}
+        aria-describedby={description ? descriptionId : undefined}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <h2 id={titleId}>{title}</h2>
-        <p id={descriptionId}>{description}</p>
+        {description ? <p id={descriptionId}>{description}</p> : null}
         <div className="ui-modal-actions">
-          <Button type="button" variant="ghost" onClick={onClose} disabled={confirming}>Cancel</Button>
-          <Button type="button" variant={danger ? "danger" : "primary"} onClick={onConfirm} loading={confirming}>{confirmLabel}</Button>
+          <Button type="button" variant="ghost" onClick={onClose} disabled={confirming}>{cancelLabel}</Button>
+          {actions?.length ? actions.map((action) => (
+            <Button type="button" key={action.label} variant={action.danger ? "danger" : "secondary"} onClick={action.onClick} loading={confirming}>{action.label}</Button>
+          )) : (
+            <Button type="button" variant={danger ? "danger" : "primary"} onClick={onConfirm} loading={confirming}>{confirmLabel}</Button>
+          )}
         </div>
       </div>
     </div>

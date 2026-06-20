@@ -1,8 +1,0 @@
-{
-  "name": "@pablozaiden/listen-web",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "build": "bun src/build.ts"
-  }
-}

@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import type { BrowserPushConfigResponse, BrowserPushStatusResponse, BrowserPushSubscription } from "@listen/contracts";
 import { appFetch } from "@listen/client-sdk";
-import { ActionMenu } from "./ui/ActionMenu";
-import { Badge } from "./ui/Badge";
 import { Button } from "./ui/Button";
 
 type BrowserPushUiState = "loading" | "unsupported" | "denied" | "unsubscribed" | "subscribed" | "error";
@@ -233,15 +231,6 @@ export function BrowserPushSettings({ onEnabled, onDisabled }: { onEnabled?: () 
     }
   }
 
-  const statusText = {
-    loading: "Checking this browser...",
-    unsupported: "This browser does not support web push notifications here.",
-    denied: "Notifications are blocked for this browser. Enable them in the browser or OS settings first.",
-    unsubscribed: "This browser is not receiving Listen notifications.",
-    subscribed: "This browser is receiving Listen notifications.",
-    error: "Could not update browser notifications.",
-  }[state.status];
-
   const primaryAction = state.status === "subscribed" ? (
     <Button type="button" onClick={() => void unsubscribe()} disabled={state.busy}>
       {state.busy ? "Disabling..." : "Disable on this browser"}
@@ -257,20 +246,15 @@ export function BrowserPushSettings({ onEnabled, onDisabled }: { onEnabled?: () 
       <div>
         <div className="settings-card-title-row">
           <h3>Browser notifications</h3>
-          <Badge variant={state.status === "subscribed" ? "success" : state.status === "denied" ? "danger" : "info"}>{state.status}</Badge>
         </div>
-        <p>{statusText}</p>
-        {state.status === "unsupported" ? (
-          <p className="muted">On iPhone or iPad, install Listen to the Home Screen and open it from there before subscribing. Production notifications require HTTPS; localhost works for development.</p>
-        ) : null}
         {state.message ? <p className="error">{state.message}</p> : null}
       </div>
       <div className="settings-card-actions">
         {state.status === "error" ? (
-          <ActionMenu label="Browser notification actions">
+          <>
             {primaryAction}
             <Button type="button" variant="ghost" onClick={() => void actions.refresh()}>Retry</Button>
-          </ActionMenu>
+          </>
         ) : primaryAction}
       </div>
     </section>

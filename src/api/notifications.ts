@@ -21,7 +21,9 @@ export function handleNotifications(req: Request): Response | undefined {
       }
       if (req.method === "DELETE") {
         const sourceId = url.searchParams.get("sourceId") ?? undefined;
-        return successResponse({ success: true, deletedCount: deleteNotifications(sourceId) });
+        const openedParam = url.searchParams.get("opened");
+        const opened = openedParam === null ? undefined : openedParam === "true";
+        return successResponse({ success: true, deletedCount: deleteNotifications({ sourceId, opened }) });
       }
       return methodNotAllowed();
     }

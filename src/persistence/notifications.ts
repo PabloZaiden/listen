@@ -145,9 +145,10 @@ export function deleteNotificationById(id: string): boolean {
   return result.changes > 0;
 }
 
-export function deleteNotifications(sourceId?: string): number {
-  const result = sourceId
-    ? getDatabase().query("DELETE FROM notifications WHERE source_id = $sourceId").run({ sourceId })
-    : getDatabase().query("DELETE FROM notifications").run();
+export function deleteNotifications(options: Pick<ListNotificationOptions, "sourceId" | "opened"> = {}): number {
+  const where = whereClause(options);
+  const result = getDatabase().query(`DELETE FROM notifications ${where}`).run({
+    sourceId: options.sourceId ?? null,
+  });
   return result.changes;
 }

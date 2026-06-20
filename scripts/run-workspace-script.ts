@@ -8,15 +8,7 @@ if (!scriptName) {
 const workspaceGlobs = ["apps/*/package.json", "packages/*/package.json"];
 const packageFiles = (await Promise.all(workspaceGlobs.map((glob) => Array.fromAsync(new Bun.Glob(glob).scan("."))))).flat();
 
-for (const packageFile of packageFiles.sort((left, right) => {
-  if (left.startsWith("apps/web/")) {
-    return -1;
-  }
-  if (right.startsWith("apps/web/")) {
-    return 1;
-  }
-  return left.localeCompare(right);
-})) {
+for (const packageFile of packageFiles.sort()) {
   const manifest = await Bun.file(packageFile).json() as { scripts?: Record<string, string> };
   if (!manifest.scripts?.[scriptName]) {
     continue;
