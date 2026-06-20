@@ -61,7 +61,7 @@ export function initializeDatabase(dataDir = process.env["LISTEN_DATA_DIR"] ?? "
       icon_data_url TEXT,
       created_at TEXT NOT NULL,
       opened_at TEXT,
-      FOREIGN KEY (source_id) REFERENCES webhook_sources(id) ON DELETE SET NULL
+      FOREIGN KEY (source_id) REFERENCES webhook_sources(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS browser_push_subscriptions (

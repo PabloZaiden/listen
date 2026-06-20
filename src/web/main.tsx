@@ -21,7 +21,7 @@ import { EmptyState } from "./ui/EmptyState";
 import { Field } from "./ui/Field";
 import { IconButton } from "./ui/IconButton";
 import { Panel } from "./ui/Panel";
-import { ToastProvider, useToast } from "./ui/Toast";
+import { useToast } from "./ui/Toast";
 import { LISTEN_VERSION } from "../version";
 import "./styles.css";
 
@@ -70,8 +70,6 @@ interface ConfirmAction {
 }
 
 interface WebhookResult {
-  kind: "created" | "rotated";
-  sourceId: string;
   sourceName: string;
   url: string;
 }
@@ -150,7 +148,7 @@ function useConfig(): [AppConfig | undefined, () => Promise<void>] {
 function useSources(): [SourceResponse[], () => Promise<void>] {
   const [sources, setSources] = useState<SourceResponse[]>([]);
   const refresh = useCallback(async () => {
-    setSources((await json<{ sources: SourceResponse[] }>("/api/sources?includeDisabled=true")).sources);
+    setSources((await json<{ sources: SourceResponse[] }>("/api/sources")).sources);
   }, []);
   return [sources, refresh];
 }
@@ -326,9 +324,6 @@ function AppShell({
   const sourceList = (
     <div className="source-filter-list">
       <div className="source-filter-heading">Sources</div>
-      <button type="button" className={!selectedSourceId ? "source-filter active" : "source-filter"} onClick={() => { onSourceFilter(""); closeSidebarOnMobile(); }}>
-        <span>All sources</span>
-      </button>
       {sources.map((source) => (
         <button
           type="button"
@@ -348,22 +343,20 @@ function AppShell({
 
   return (
     <main className={sidebarCollapsed ? "app-shell sidebar-collapsed" : "app-shell"}>
-      {!sidebarCollapsed ? <div className="mobile-sidebar-backdrop" onMouseDown={() => { setSidebarCollapsed(true); sidebarRevealButtonRef.current?.focus(); }} /> : null}
-      {sidebarCollapsed ? null : (
-        <aside className="shell-rail">
-          <div className="rail-header">
-            <button type="button" className="brand-button" onClick={() => onNavigate({ name: "inbox" })}>Listen</button>
-            <div className="rail-actions" role="group" aria-label="Sidebar controls">
-              {navigationButtons()}
-              <IconButton type="button" aria-label="Collapse sidebar" title="Collapse sidebar" variant="ghost" onClick={() => setSidebarCollapsed(true)}>
-                <Icon name="panel" />
-              </IconButton>
-            </div>
+      <div className="mobile-sidebar-backdrop" onMouseDown={() => { setSidebarCollapsed(true); sidebarRevealButtonRef.current?.focus(); }} />
+      <aside className={sidebarCollapsed ? "shell-rail shell-rail-collapsed" : "shell-rail"} aria-hidden={sidebarCollapsed}>
+        <div className="rail-header">
+          <button type="button" className="brand-button" onClick={() => { onSourceFilter(""); closeSidebarOnMobile(); }}>Listen</button>
+          <div className="rail-actions" role="group" aria-label="Sidebar controls">
+            {navigationButtons()}
+            <IconButton type="button" aria-label="Collapse sidebar" title="Collapse sidebar" variant="ghost" onClick={() => setSidebarCollapsed(true)}>
+              <Icon name="panel" />
+            </IconButton>
           </div>
-          {sourceList}
-          <VersionLegend />
-        </aside>
-      )}
+        </div>
+        {sourceList}
+        <VersionLegend />
+      </aside>
       {sidebarCollapsed ? (
         <div className="sidebar-reveal-row">
           <IconButton ref={sidebarRevealButtonRef} type="button" aria-label="Show sidebar" title="Show sidebar" variant="ghost" onClick={() => setSidebarCollapsed(false)}>
@@ -453,9 +446,11 @@ function InboxView({
 
 function NotificationDetailView({
   id,
+  onBack,
   onDelete,
 }: {
   id: string;
+  onBack: () => void;
   onDelete: (id: string) => void;
 }): React.ReactElement {
   const [detail, setDetail] = useState<NotificationDetail>();
@@ -524,8 +519,9 @@ function NotificationDetailView({
           </ReactMarkdown>
         </div>
       </Panel>
-      <div className="detail-delete-row">
-        <Button type="button" variant="ghost" onClick={() => onDelete(detail.id)}>Delete</Button>
+      <div className="detail-actions-row">
+        <Button type="button" variant="danger" onClick={() => onDelete(detail.id)}>Delete</Button>
+        <Button type="button" variant="secondary" onClick={onBack}>Back</Button>
       </div>
     </div>
   );
@@ -549,7 +545,7 @@ function SourcesView({ sources, refreshSources, requestConfirm }: { sources: Sou
     setError(undefined);
     try {
       const response = await json<{ source: SourceResponse; webhookUrl: string }>("/api/sources", { method: "POST", body: JSON.stringify({ name }) });
-      setWebhookResult({ kind: "created", sourceId: response.source.id, sourceName: response.source.name, url: response.webhookUrl });
+      setWebhookResult({ sourceName: response.source.name, url: response.webhookUrl });
       await copyWebhook(response.webhookUrl);
       setName("");
       toast.success("Source created.");
@@ -569,7 +565,7 @@ function SourcesView({ sources, refreshSources, requestConfirm }: { sources: Sou
       danger: true,
       action: async () => {
         const response = await json<{ webhookUrl: string }>(`/api/sources/${encodeURIComponent(source.id)}/token/rotate`, { method: "POST" });
-        setWebhookResult({ kind: "rotated", sourceId: source.id, sourceName: source.name, url: response.webhookUrl });
+        setWebhookResult({ sourceName: source.name, url: response.webhookUrl });
         await copyWebhook(response.webhookUrl);
         toast.success("Source token rotated.");
         await refreshSources();
@@ -577,9 +573,10 @@ function SourcesView({ sources, refreshSources, requestConfirm }: { sources: Sou
     });
   }
 
-  function disable(source: SourceResponse): void {
+  function deleteSource(source: SourceResponse): void {
     requestConfirm({
       title: "Delete source?",
+      description: `This will delete ${source.name} and all notifications from this source.`,
       confirmLabel: "Delete",
       danger: true,
       action: async () => {
@@ -602,7 +599,7 @@ function SourcesView({ sources, refreshSources, requestConfirm }: { sources: Sou
   function WebhookBox({ result }: { result: WebhookResult }): React.ReactElement {
     return (
       <div className="secret-box">
-        <strong>{result.kind === "created" ? "New webhook URL" : `Rotated webhook URL for ${result.sourceName}`}</strong>
+        <strong>{`New webhook URL for ${result.sourceName}`}</strong>
         <code>{result.url}</code>
         <div className="row">
           <Button type="button" variant="secondary" onClick={() => void copyWebhook(result.url)}>Copy URL</Button>
@@ -619,27 +616,26 @@ function SourcesView({ sources, refreshSources, requestConfirm }: { sources: Sou
           <h1>Sources</h1>
         </div>
       </div>
-      <Panel title="Create source">
-        {webhookResult?.kind === "created" ? <WebhookBox result={webhookResult} /> : null}
+      <Panel>
+        {webhookResult ? <WebhookBox result={webhookResult} /> : null}
         <div className="source-create-grid">
-          <Field label="Source name" htmlFor="source-name" required errorText={error ?? nameError}>
-            <input id="source-name" className="app-input" value={name} onChange={(event) => setName(event.target.value)} placeholder="CI Pipeline" maxLength={NOTIFICATION_SOURCE_NAME_MAX_CHARS + 1} />
+          <Field label="Source name" htmlFor="source-name" errorText={error ?? nameError} reserveErrorSpace hideLabel>
+            <input id="source-name" className="app-input" aria-label="Source name" value={name} onChange={(event) => setName(event.target.value)} placeholder="CI Pipeline" maxLength={NOTIFICATION_SOURCE_NAME_MAX_CHARS + 1} />
           </Field>
           <Button type="button" variant="primary" loading={busy} onClick={() => void create()}>Create source</Button>
         </div>
       </Panel>
 
-      <Panel title="Configured sources">
+      <Panel>
         <div className="source-table">
           {sources.map((source) => (
             <article className="source-card" key={source.id}>
               <div>
                 <h3>{source.name}</h3>
-                {webhookResult?.kind === "rotated" && webhookResult.sourceId === source.id ? <WebhookBox result={webhookResult} /> : null}
               </div>
               <div className="row-actions">
                 <Button type="button" size="sm" variant="secondary" onClick={() => rotate(source)}>Rotate token</Button>
-                <Button type="button" size="sm" variant="danger" disabled={Boolean(source.disabledAt)} onClick={() => disable(source)}>Delete</Button>
+                <Button type="button" size="sm" variant="danger" onClick={() => deleteSource(source)}>Delete</Button>
               </div>
             </article>
           ))}
@@ -988,6 +984,9 @@ function AppContent(): React.ReactElement {
       setUnreadCount(event.unreadCount);
       void updateAppBadge(event.unreadCount);
     } else if (event.type.startsWith("source.")) {
+      if (event.type === "source.deleted" && selectedSourceId === event.sourceId) {
+        setSelectedSourceId("");
+      }
       void refreshSources();
     }
   }, [queueHomeRefresh, refreshSources, selectedSourceId, ws.lastEvent]);
@@ -1120,6 +1119,7 @@ function AppContent(): React.ReactElement {
         {route.name === "notification" ? (
           <NotificationDetailView
             id={route.id}
+            onBack={() => navigate({ name: "inbox" })}
             onDelete={deleteNotification}
           />
         ) : null}
@@ -1155,11 +1155,7 @@ function AppContent(): React.ReactElement {
 }
 
 function App(): React.ReactElement {
-  return (
-    <ToastProvider>
-      <AppContent />
-    </ToastProvider>
-  );
+  return <AppContent />;
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

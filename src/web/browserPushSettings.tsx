@@ -26,6 +26,13 @@ function browserSupportsPush(): boolean {
   return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 }
 
+export function browserPushErrorSummary(message: string): string {
+  if (message.toLowerCase().includes("serviceworker")) {
+    return "Browser notifications could not start the service worker.";
+  }
+  return "Browser notifications could not be enabled.";
+}
+
 export function base64UrlToUint8Array(value: string): Uint8Array<ArrayBuffer> {
   const padding = "=".repeat((4 - (value.length % 4)) % 4);
   const base64 = `${value}${padding}`.replaceAll("-", "+").replaceAll("_", "/");
@@ -242,12 +249,20 @@ export function BrowserPushSettings({ onEnabled, onDisabled }: { onEnabled?: () 
   );
 
   return (
-    <section className="settings-card browser-push-settings" aria-live="polite">
+    <section className={`settings-card browser-push-settings ${state.status === "error" ? "browser-push-settings-error" : ""}`} aria-live="polite">
       <div>
         <div className="settings-card-title-row">
           <h3>Browser notifications</h3>
         </div>
-        {state.message ? <p className="error">{state.message}</p> : null}
+        {state.message ? (
+          <div className="browser-push-error">
+            <p className="error">{browserPushErrorSummary(state.message)}</p>
+            <details>
+              <summary>Error details</summary>
+              <code>{state.message}</code>
+            </details>
+          </div>
+        ) : null}
       </div>
       <div className="settings-card-actions">
         {state.status === "error" ? (

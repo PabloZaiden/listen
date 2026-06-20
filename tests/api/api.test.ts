@@ -8,6 +8,7 @@ import { setBrowserPushSenderForTests } from "../../src/core/browser-push";
 import { createLogger, getLogLevel } from "../../src/core/logger";
 import { resetWebhookRateLimitForTests, setWebhookRateLimitOptionsForTests } from "../../src/core/webhook-rate-limit";
 import { getBrowserPushSubscriptionByEndpoint } from "../../src/persistence/browser-push";
+import { getDatabase } from "../../src/persistence/database";
 
 async function request(path: string, init?: RequestInit, config?: Partial<ServerConfig>): Promise<Response> {
   const handler = createFetchHandler({ ...readServerConfig(), passkeyDisabled: true, sameOriginCheckDisabled: true, ...config });
@@ -349,7 +350,7 @@ describe("API", () => {
     }
   });
 
-  test("webhook rejects invalid token and disabled source", async () => {
+  test("webhook rejects invalid token and deleted source", async () => {
     const created = await createSource();
     const invalid = await webhook(created.webhookUrl.replace(/[^/]+$/, "bad-token"), {
       method: "POST",
@@ -358,12 +359,59 @@ describe("API", () => {
     });
     expect(invalid.status).toBe(401);
     await request(`/api/sources/${created.source.id}`, { method: "DELETE" });
-    const disabled = await webhook(created.webhookUrl, {
+    const deleted = await webhook(created.webhookUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title: "A", shortDescription: "B", markdownContent: "C" }),
     });
-    expect(disabled.status).toBe(410);
+    expect(deleted.status).toBe(404);
+  });
+
+  test("deleting a source deletes its notifications", async () => {
+    const first = await createSource();
+    const secondResponse = await request("/api/sources", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Other" }),
+    });
+    const second = await json<{ source: { id: string }; webhookUrl: string }>(secondResponse);
+    for (const url of [first.webhookUrl, second.webhookUrl]) {
+      const webhookResponse = await webhook(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: "A", shortDescription: "B", markdownContent: "C" }),
+      });
+      expect(webhookResponse.status).toBe(201);
+    }
+
+    const deleted = await request(`/api/sources/${first.source.id}`, { method: "DELETE" });
+    expect(deleted.status).toBe(200);
+
+    const sources = await json<{ sources: Array<{ id: string }> }>(await request("/api/sources"));
+    expect(sources.sources.some((source) => source.id === first.source.id)).toBe(false);
+
+    const firstList = await json<{ notifications: unknown[] }>(await request(`/api/notifications?sourceId=${first.source.id}`));
+    expect(firstList.notifications).toHaveLength(0);
+    const secondList = await json<{ notifications: unknown[] }>(await request(`/api/notifications?sourceId=${second.source.id}`));
+    expect(secondList.notifications).toHaveLength(1);
+  });
+
+  test("source schema delete cascades notifications", async () => {
+    const created = await createSource();
+    const webhookResponse = await webhook(created.webhookUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "A", shortDescription: "B", markdownContent: "C" }),
+    });
+    expect(webhookResponse.status).toBe(201);
+
+    const migration = getDatabase().query("SELECT name FROM schema_migrations WHERE version = 1").get() as { name: string } | null;
+    expect(migration?.name).toBe("hard_delete_sources");
+
+    getDatabase().query("DELETE FROM webhook_sources WHERE id = $id").run({ id: created.source.id });
+
+    const list = await json<{ notifications: unknown[] }>(await request(`/api/notifications?sourceId=${created.source.id}`));
+    expect(list.notifications).toHaveLength(0);
   });
 
   test("notification detail marks opened and deletes work", async () => {
