@@ -2,7 +2,6 @@ node_modules/
 .cache/
 
 apps/listen/dist/
-apps/web/dist/
 packages/*/dist/
 
 data/

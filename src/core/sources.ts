@@ -1,6 +1,6 @@
 import type { SourceResponse } from "@listen/contracts";
 import {
-  disableSource,
+  deleteSource,
   getSourceById,
   insertSource,
   listSources as listPersistedSources,
@@ -9,6 +9,7 @@ import {
   type PersistedSource,
 } from "../persistence/sources";
 import { emit } from "./event-emitter";
+import { getUnreadNotificationCount } from "./notifications";
 import { generateWebhookToken, hashWebhookToken } from "./webhook-tokens";
 import { getRequestOrigin } from "./request-origin";
 import { createLogger } from "./logger";
@@ -101,13 +102,14 @@ export function markSourceUsed(id: string, usedAt = nowIso()): SourceResponse | 
   return response;
 }
 
-export function softDisableSource(id: string): boolean {
-  const source = disableSource(id, nowIso());
-  if (!source) {
-    log.warn("Source disable requested but source was not found", { sourceId: id });
+export function deleteSourceAndNotifications(id: string): boolean {
+  const deleted = deleteSource(id);
+  if (!deleted) {
+    log.warn("Source delete requested but source was not found", { sourceId: id });
     return false;
   }
+  emit({ type: "notifications.deleted", sourceId: id, deletedCount: deleted.deletedNotificationCount, unreadCount: getUnreadNotificationCount() });
   emit({ type: "source.deleted", sourceId: id });
-  log.info("Source disabled", { sourceId: id });
+  log.info("Source deleted", { sourceId: id, deletedNotificationCount: deleted.deletedNotificationCount });
   return true;
 }

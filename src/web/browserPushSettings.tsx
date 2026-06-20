@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import type { BrowserPushConfigResponse, BrowserPushStatusResponse, BrowserPushSubscription } from "@listen/contracts";
 import { appFetch } from "@listen/client-sdk";
+import { Button } from "./ui/Button";
 
 type BrowserPushUiState = "loading" | "unsupported" | "denied" | "unsubscribed" | "subscribed" | "error";
 
@@ -23,6 +24,13 @@ async function apiJson<T>(url: string, init?: RequestInit): Promise<T> {
 
 function browserSupportsPush(): boolean {
   return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+}
+
+export function browserPushErrorSummary(message: string): string {
+  if (message.toLowerCase().includes("serviceworker")) {
+    return "Browser notifications could not start the service worker.";
+  }
+  return "Browser notifications could not be enabled.";
 }
 
 export function base64UrlToUint8Array(value: string): Uint8Array<ArrayBuffer> {
@@ -107,7 +115,7 @@ async function ensureCurrentBrowserPushSubscription(
   });
 }
 
-function useBrowserPushSettings(): [BrowserPushState, { subscribe: () => Promise<void>; unsubscribe: () => Promise<void>; refresh: () => Promise<void> }] {
+function useBrowserPushSettings(): [BrowserPushState, { subscribe: () => Promise<boolean>; unsubscribe: () => Promise<boolean>; refresh: () => Promise<void> }] {
   const [state, setState] = useState<BrowserPushState>({ status: "loading", busy: false });
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
@@ -160,17 +168,17 @@ function useBrowserPushSettings(): [BrowserPushState, { subscribe: () => Promise
     try {
       if (!browserSupportsPush()) {
         setState({ status: "unsupported", busy: false });
-        return;
+        return false;
       }
       if (Notification.permission !== "granted") {
         const permission = await Notification.requestPermission();
         if (permission === "denied") {
           setState({ status: "denied", busy: false });
-          return;
+          return false;
         }
         if (permission !== "granted") {
           setState({ status: "unsubscribed", busy: false, message: "Notification permission was not granted." });
-          return;
+          return false;
         }
       }
 
@@ -178,8 +186,10 @@ function useBrowserPushSettings(): [BrowserPushState, { subscribe: () => Promise
       const subscription = await ensureCurrentBrowserPushSubscription(registration, await getApplicationServerKey());
       await saveSubscription(subscription);
       setState({ status: "subscribed", busy: false });
+      return true;
     } catch (error) {
       setState({ status: "error", busy: false, message: error instanceof Error ? error.message : String(error) });
+      return false;
     }
   }, []);
 
@@ -188,13 +198,13 @@ function useBrowserPushSettings(): [BrowserPushState, { subscribe: () => Promise
     try {
       if (!browserSupportsPush()) {
         setState({ status: "unsupported", busy: false });
-        return;
+        return false;
       }
       const registration = await registerServiceWorker();
       const subscription = await registration.pushManager.getSubscription();
       if (!subscription) {
         setState({ status: "unsubscribed", busy: false });
-        return;
+        return false;
       }
       const payload = toBrowserPushSubscription(subscription);
       await apiJson<BrowserPushStatusResponse>("/api/browser-push/subscriptions", {
@@ -203,47 +213,64 @@ function useBrowserPushSettings(): [BrowserPushState, { subscribe: () => Promise
       });
       await subscription.unsubscribe();
       setState({ status: "unsubscribed", busy: false });
+      return true;
     } catch (error) {
       setState({ status: "error", busy: false, message: error instanceof Error ? error.message : String(error) });
+      return false;
     }
   }, []);
 
   return [state, { subscribe, unsubscribe, refresh: () => refresh() }];
 }
 
-export function BrowserPushSettings(): React.ReactElement {
+export function BrowserPushSettings({ onEnabled, onDisabled }: { onEnabled?: () => void; onDisabled?: () => void }): React.ReactElement {
   const [state, actions] = useBrowserPushSettings();
 
-  const statusText = {
-    loading: "Checking this browser...",
-    unsupported: "This browser does not support web push notifications here.",
-    denied: "Notifications are blocked for this browser. Enable them in the browser or OS settings first.",
-    unsubscribed: "This browser is not receiving Listen notifications.",
-    subscribed: "This browser is receiving Listen notifications.",
-    error: "Could not update browser notifications.",
-  }[state.status];
+  async function subscribe(): Promise<void> {
+    if (await actions.subscribe()) {
+      onEnabled?.();
+    }
+  }
+
+  async function unsubscribe(): Promise<void> {
+    if (await actions.unsubscribe()) {
+      onDisabled?.();
+    }
+  }
+
+  const primaryAction = state.status === "subscribed" ? (
+    <Button type="button" onClick={() => void unsubscribe()} disabled={state.busy}>
+      {state.busy ? "Disabling..." : "Disable on this browser"}
+    </Button>
+  ) : (
+    <Button type="button" variant="primary" onClick={() => void subscribe()} disabled={state.busy || state.status === "loading" || state.status === "unsupported" || state.status === "denied"}>
+      {state.busy ? "Enabling..." : "Enable on this browser"}
+    </Button>
+  );
 
   return (
-    <section className="settings-card browser-push-settings" aria-live="polite">
+    <section className={`settings-card browser-push-settings ${state.status === "error" ? "browser-push-settings-error" : ""}`} aria-live="polite">
       <div>
-        <h3>Browser notifications</h3>
-        <p>{statusText}</p>
-        {state.status === "unsupported" ? (
-          <p className="muted">On iPhone or iPad, install Listen to the Home Screen and open it from there before subscribing.</p>
+        <div className="settings-card-title-row">
+          <h3>Browser notifications</h3>
+        </div>
+        {state.message ? (
+          <div className="browser-push-error">
+            <p className="error">{browserPushErrorSummary(state.message)}</p>
+            <details>
+              <summary>Error details</summary>
+              <code>{state.message}</code>
+            </details>
+          </div>
         ) : null}
-        {state.message ? <p className="error">{state.message}</p> : null}
       </div>
       <div className="settings-card-actions">
-        {state.status === "subscribed" ? (
-          <button type="button" onClick={() => void actions.unsubscribe()} disabled={state.busy}>
-            {state.busy ? "Disabling..." : "Disable on this browser"}
-          </button>
-        ) : (
-          <button type="button" onClick={() => void actions.subscribe()} disabled={state.busy || state.status === "loading" || state.status === "unsupported" || state.status === "denied"}>
-            {state.busy ? "Enabling..." : "Enable on this browser"}
-          </button>
-        )}
-        {state.status === "error" ? <button type="button" onClick={() => void actions.refresh()}>Retry</button> : null}
+        {state.status === "error" ? (
+          <>
+            {primaryAction}
+            <Button type="button" variant="ghost" onClick={() => void actions.refresh()}>Retry</Button>
+          </>
+        ) : primaryAction}
       </div>
     </section>
   );

@@ -6,6 +6,7 @@ export type ListenRealtimeEvent =
   | { type: "notification.opened"; notification: NotificationListItem; unreadCount: number }
   | { type: "notification.deleted"; notificationId: string; sourceId?: string; unreadCount: number }
   | { type: "notifications.deleted"; sourceId?: string; deletedCount: number; unreadCount: number }
+  | { type: "notifications.opened"; sourceId?: string; updatedCount: number; unreadCount: number }
   | { type: "source.created"; source: SourceResponse }
   | { type: "source.updated"; source: SourceResponse }
   | { type: "source.deleted"; sourceId: string };

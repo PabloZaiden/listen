@@ -1,5 +1,5 @@
 import { createSourceRequestSchema } from "@listen/contracts";
-import { createSource, listSources, rotateSourceToken, softDisableSource } from "../core/sources";
+import { createSource, deleteSourceAndNotifications, listSources, rotateSourceToken } from "../core/sources";
 import { createLogger, errorLogFields } from "../core/logger";
 import { errorResponse, jsonResponse, methodNotAllowed, notFound, successResponse } from "./helpers";
 import { parseJsonBody, parseWithSchema, RequestValidationError } from "./validation";
@@ -34,7 +34,7 @@ export async function handleSources(req: Request): Promise<Response | undefined>
       if (req.method !== "DELETE") {
         return methodNotAllowed();
       }
-      return softDisableSource(decodeURIComponent(sourceMatch[1] ?? ""))
+      return deleteSourceAndNotifications(decodeURIComponent(sourceMatch[1] ?? ""))
         ? successResponse()
         : notFound("Source not found");
     }

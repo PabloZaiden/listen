@@ -77,11 +77,16 @@ export function updateSourceLastUsedAt(id: string, lastUsedAt: string): Persiste
   return getSourceById(id);
 }
 
-export function disableSource(id: string, disabledAt: string): PersistedSource | undefined {
-  getDatabase().query(`
-    UPDATE webhook_sources
-    SET disabled_at = COALESCE(disabled_at, $disabledAt), updated_at = $disabledAt
-    WHERE id = $id
-  `).run({ id, disabledAt });
-  return getSourceById(id);
+export function deleteSource(id: string): { source: PersistedSource; deletedNotificationCount: number } | undefined {
+  const database = getDatabase();
+  const source = getSourceById(id);
+  if (!source) {
+    return undefined;
+  }
+  const deletedNotifications = database.query("DELETE FROM notifications WHERE source_id = $id").run({ id });
+  const deletedSource = database.query("DELETE FROM webhook_sources WHERE id = $id").run({ id });
+  if (deletedSource.changes === 0) {
+    return undefined;
+  }
+  return { source, deletedNotificationCount: deletedNotifications.changes };
 }

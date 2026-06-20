@@ -8,6 +8,7 @@ import { setBrowserPushSenderForTests } from "../../src/core/browser-push";
 import { createLogger, getLogLevel } from "../../src/core/logger";
 import { resetWebhookRateLimitForTests, setWebhookRateLimitOptionsForTests } from "../../src/core/webhook-rate-limit";
 import { getBrowserPushSubscriptionByEndpoint } from "../../src/persistence/browser-push";
+import { getDatabase } from "../../src/persistence/database";
 
 async function request(path: string, init?: RequestInit, config?: Partial<ServerConfig>): Promise<Response> {
   const handler = createFetchHandler({ ...readServerConfig(), passkeyDisabled: true, sameOriginCheckDisabled: true, ...config });
@@ -349,7 +350,7 @@ describe("API", () => {
     }
   });
 
-  test("webhook rejects invalid token and disabled source", async () => {
+  test("webhook rejects invalid token and deleted source", async () => {
     const created = await createSource();
     const invalid = await webhook(created.webhookUrl.replace(/[^/]+$/, "bad-token"), {
       method: "POST",
@@ -358,12 +359,59 @@ describe("API", () => {
     });
     expect(invalid.status).toBe(401);
     await request(`/api/sources/${created.source.id}`, { method: "DELETE" });
-    const disabled = await webhook(created.webhookUrl, {
+    const deleted = await webhook(created.webhookUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title: "A", shortDescription: "B", markdownContent: "C" }),
     });
-    expect(disabled.status).toBe(410);
+    expect(deleted.status).toBe(404);
+  });
+
+  test("deleting a source deletes its notifications", async () => {
+    const first = await createSource();
+    const secondResponse = await request("/api/sources", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Other" }),
+    });
+    const second = await json<{ source: { id: string }; webhookUrl: string }>(secondResponse);
+    for (const url of [first.webhookUrl, second.webhookUrl]) {
+      const webhookResponse = await webhook(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: "A", shortDescription: "B", markdownContent: "C" }),
+      });
+      expect(webhookResponse.status).toBe(201);
+    }
+
+    const deleted = await request(`/api/sources/${first.source.id}`, { method: "DELETE" });
+    expect(deleted.status).toBe(200);
+
+    const sources = await json<{ sources: Array<{ id: string }> }>(await request("/api/sources"));
+    expect(sources.sources.some((source) => source.id === first.source.id)).toBe(false);
+
+    const firstList = await json<{ notifications: unknown[] }>(await request(`/api/notifications?sourceId=${first.source.id}`));
+    expect(firstList.notifications).toHaveLength(0);
+    const secondList = await json<{ notifications: unknown[] }>(await request(`/api/notifications?sourceId=${second.source.id}`));
+    expect(secondList.notifications).toHaveLength(1);
+  });
+
+  test("source schema delete cascades notifications", async () => {
+    const created = await createSource();
+    const webhookResponse = await webhook(created.webhookUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "A", shortDescription: "B", markdownContent: "C" }),
+    });
+    expect(webhookResponse.status).toBe(201);
+
+    const migration = getDatabase().query("SELECT name FROM schema_migrations WHERE version = 1").get() as { name: string } | null;
+    expect(migration?.name).toBe("hard_delete_sources");
+
+    getDatabase().query("DELETE FROM webhook_sources WHERE id = $id").run({ id: created.source.id });
+
+    const list = await json<{ notifications: unknown[] }>(await request(`/api/notifications?sourceId=${created.source.id}`));
+    expect(list.notifications).toHaveLength(0);
   });
 
   test("notification detail marks opened and deletes work", async () => {
@@ -383,6 +431,56 @@ describe("API", () => {
     expect(deleteResponse.status).toBe(200);
     const missingResponse = await request(`/api/notifications/${notification.id}`);
     expect(missingResponse.status).toBe(404);
+  });
+
+  test("notification read and unread mutations update unread counts", async () => {
+    const created = await createSource();
+    const webhookResponse = await webhook(created.webhookUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "A", shortDescription: "B", markdownContent: "C" }),
+    });
+    const notification = await json<{ id: string }>(webhookResponse);
+
+    const afterCreate = await json<{ unreadCount: number }>(await request("/api/notifications"));
+    const initialUnreadCount = afterCreate.unreadCount - 1;
+
+    const readResponse = await request(`/api/notifications/${notification.id}/read`, { method: "POST" });
+    expect(readResponse.status).toBe(200);
+    expect((await json<{ notification: { openedAt?: string } }>(readResponse)).notification.openedAt).toBeTruthy();
+    const afterRead = await json<{ unreadCount: number }>(await request("/api/notifications"));
+    expect(afterRead.unreadCount).toBe(initialUnreadCount);
+
+    const unreadResponse = await request(`/api/notifications/${notification.id}/unread`, { method: "POST" });
+    expect(unreadResponse.status).toBe(200);
+    expect((await json<{ notification: { openedAt?: string } }>(unreadResponse)).notification.openedAt).toBeUndefined();
+    const afterUnread = await json<{ unreadCount: number }>(await request("/api/notifications"));
+    expect(afterUnread.unreadCount).toBe(initialUnreadCount + 1);
+  });
+
+  test("bulk mark read can target one source", async () => {
+    const first = await createSource();
+    const secondResponse = await request("/api/sources", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Other" }),
+    });
+    const second = await json<{ source: { id: string }; webhookUrl: string }>(secondResponse);
+
+    for (const url of [first.webhookUrl, second.webhookUrl]) {
+      await webhook(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: "A", shortDescription: "B", markdownContent: "C" }),
+      });
+    }
+
+    const bulkRead = await request(`/api/notifications/read?sourceId=${first.source.id}`, { method: "POST" });
+    expect(await json(bulkRead)).toMatchObject({ updatedCount: 1 });
+    const firstUnread = await json<{ notifications: unknown[] }>(await request(`/api/notifications?sourceId=${first.source.id}&opened=false`));
+    expect(firstUnread.notifications).toHaveLength(0);
+    const secondUnread = await json<{ notifications: unknown[] }>(await request(`/api/notifications?sourceId=${second.source.id}&opened=false`));
+    expect(secondUnread.notifications).toHaveLength(1);
   });
 
   test("notification list returns global unread count after open and delete changes", async () => {

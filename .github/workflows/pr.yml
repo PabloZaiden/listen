@@ -23,13 +23,31 @@ jobs:
       - run: |
           LISTEN_DISABLE_PASSKEY=true LISTEN_DISABLE_SAME_ORIGIN_CHECK=true LISTEN_PORT=3018 bun run dev &
           PID=$!
+          trap 'kill "$PID"' EXIT
           for i in $(seq 1 30); do
             curl -fsS http://127.0.0.1:3018/api/health && break
             sleep 1
           done
-          curl -fsS http://127.0.0.1:3018/
-          curl -fsS http://127.0.0.1:3018/web/styles.css
-          kill "$PID"
+          HTML=$(curl -fsS -D /tmp/listen-dev-root-headers http://127.0.0.1:3018/)
+          grep -qi '^content-type: text/html' /tmp/listen-dev-root-headers
+          JS=$(printf '%s' "$HTML" | sed -n 's/.*src="\([^"]*\.js\)".*/\1/p')
+          CSS=$(printf '%s' "$HTML" | sed -n 's/.*href="\([^"]*\.css\)".*/\1/p')
+          test -n "$JS"
+          test -n "$CSS"
+          JS="${JS#./}"
+          JS="${JS#/}"
+          CSS="${CSS#./}"
+          CSS="${CSS#/}"
+          curl -fsS -D /tmp/listen-dev-js-headers "http://127.0.0.1:3018/$JS" >/dev/null
+          curl -fsS -D /tmp/listen-dev-css-headers "http://127.0.0.1:3018/$CSS" >/dev/null
+          grep -qi '^content-type: .*javascript' /tmp/listen-dev-js-headers
+          grep -qi '^content-type: text/css' /tmp/listen-dev-css-headers
+          curl -fsS -D /tmp/listen-dev-manifest-headers http://127.0.0.1:3018/manifest.webmanifest >/dev/null
+          curl -fsS -D /tmp/listen-dev-sw-headers http://127.0.0.1:3018/service-worker >/dev/null
+          curl -fsS -D /tmp/listen-dev-icon-headers http://127.0.0.1:3018/icons/listen-192.png >/dev/null
+          grep -qi '^content-type: application/manifest+json' /tmp/listen-dev-manifest-headers
+          grep -qi '^content-type: text/javascript' /tmp/listen-dev-sw-headers
+          grep -qi '^content-type: image/png' /tmp/listen-dev-icon-headers
       - run: |
           docker build -t listen-pr-smoke .
           docker run --rm -d --name listen-pr-smoke -p 3019:8080 \
@@ -43,11 +61,21 @@ jobs:
           done
           HTML=$(curl -fsS -D /tmp/listen-root-headers http://127.0.0.1:3019/)
           grep -qi '^content-type: text/html' /tmp/listen-root-headers
-          JS=$(printf '%s' "$HTML" | sed -n 's/.*src="\.\/\([^"]*\.js\)".*/\1/p')
-          CSS=$(printf '%s' "$HTML" | sed -n 's/.*href="\.\/\([^"]*\.css\)".*/\1/p')
+          JS=$(printf '%s' "$HTML" | sed -n 's/.*src="\([^"]*\.js\)".*/\1/p')
+          CSS=$(printf '%s' "$HTML" | sed -n 's/.*href="\([^"]*\.css\)".*/\1/p')
           test -n "$JS"
           test -n "$CSS"
+          JS="${JS#./}"
+          JS="${JS#/}"
+          CSS="${CSS#./}"
+          CSS="${CSS#/}"
           curl -fsS -D /tmp/listen-js-headers "http://127.0.0.1:3019/$JS" >/dev/null
           curl -fsS -D /tmp/listen-css-headers "http://127.0.0.1:3019/$CSS" >/dev/null
           grep -qi '^content-type: .*javascript' /tmp/listen-js-headers
           grep -qi '^content-type: text/css' /tmp/listen-css-headers
+          curl -fsS -D /tmp/listen-manifest-headers http://127.0.0.1:3019/manifest.webmanifest >/dev/null
+          curl -fsS -D /tmp/listen-sw-headers http://127.0.0.1:3019/service-worker >/dev/null
+          curl -fsS -D /tmp/listen-icon-headers http://127.0.0.1:3019/icons/listen-192.png >/dev/null
+          grep -qi '^content-type: application/manifest+json' /tmp/listen-manifest-headers
+          grep -qi '^content-type: text/javascript' /tmp/listen-sw-headers
+          grep -qi '^content-type: image/png' /tmp/listen-icon-headers

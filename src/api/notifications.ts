@@ -1,5 +1,5 @@
 import { listNotificationsQuerySchema } from "@listen/contracts";
-import { deleteNotification, deleteNotifications, listNotifications, openNotification } from "../core/notifications";
+import { deleteNotification, deleteNotifications, listNotifications, markNotificationRead, markNotificationUnread, markNotificationsRead, openNotification } from "../core/notifications";
 import { createLogger, errorLogFields } from "../core/logger";
 import { errorResponse, jsonResponse, methodNotAllowed, notFound, successResponse } from "./helpers";
 import { parseWithSchema, RequestValidationError } from "./validation";
@@ -21,9 +21,37 @@ export function handleNotifications(req: Request): Response | undefined {
       }
       if (req.method === "DELETE") {
         const sourceId = url.searchParams.get("sourceId") ?? undefined;
-        return successResponse({ success: true, deletedCount: deleteNotifications(sourceId) });
+        const openedParam = url.searchParams.get("opened");
+        const opened = openedParam === null ? undefined : openedParam === "true";
+        return successResponse({ success: true, deletedCount: deleteNotifications({ sourceId, opened }) });
       }
       return methodNotAllowed();
+    }
+
+    if (url.pathname === "/api/notifications/read") {
+      if (req.method !== "POST") {
+        return methodNotAllowed();
+      }
+      const sourceId = url.searchParams.get("sourceId") ?? undefined;
+      return successResponse({ success: true, updatedCount: markNotificationsRead(sourceId) });
+    }
+
+    const unreadMatch = /^\/api\/notifications\/([^/]+)\/unread$/.exec(url.pathname);
+    if (unreadMatch) {
+      if (req.method !== "POST") {
+        return methodNotAllowed();
+      }
+      const notification = markNotificationUnread(decodeURIComponent(unreadMatch[1] ?? ""));
+      return notification ? jsonResponse({ notification }) : notFound("Notification not found");
+    }
+
+    const readMatch = /^\/api\/notifications\/([^/]+)\/read$/.exec(url.pathname);
+    if (readMatch) {
+      if (req.method !== "POST") {
+        return methodNotAllowed();
+      }
+      const notification = markNotificationRead(decodeURIComponent(readMatch[1] ?? ""));
+      return notification ? jsonResponse({ notification }) : notFound("Notification not found");
     }
 
     const match = /^\/api\/notifications\/([^/]+)$/.exec(url.pathname);

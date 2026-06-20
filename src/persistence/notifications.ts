@@ -109,14 +109,46 @@ export function markNotificationOpened(id: string, openedAt: string): PersistedN
   return getNotificationById(id);
 }
 
+export function markNotificationRead(id: string, openedAt: string): PersistedNotification | undefined {
+  getDatabase().query(`
+    UPDATE notifications
+    SET opened_at = COALESCE(opened_at, $openedAt)
+    WHERE id = $id
+  `).run({ id, openedAt });
+  return getNotificationById(id);
+}
+
+export function markNotificationUnread(id: string): PersistedNotification | undefined {
+  getDatabase().query(`
+    UPDATE notifications
+    SET opened_at = NULL
+    WHERE id = $id
+  `).run({ id });
+  return getNotificationById(id);
+}
+
+export function markNotificationsRead(options: Pick<ListNotificationOptions, "sourceId" | "opened">, openedAt: string): number {
+  const where = whereClause(options);
+  const result = getDatabase().query(`
+    UPDATE notifications
+    SET opened_at = COALESCE(opened_at, $openedAt)
+    ${where}
+  `).run({
+    sourceId: options.sourceId ?? null,
+    openedAt,
+  });
+  return result.changes;
+}
+
 export function deleteNotificationById(id: string): boolean {
   const result = getDatabase().query("DELETE FROM notifications WHERE id = $id").run({ id });
   return result.changes > 0;
 }
 
-export function deleteNotifications(sourceId?: string): number {
-  const result = sourceId
-    ? getDatabase().query("DELETE FROM notifications WHERE source_id = $sourceId").run({ sourceId })
-    : getDatabase().query("DELETE FROM notifications").run();
+export function deleteNotifications(options: Pick<ListNotificationOptions, "sourceId" | "opened"> = {}): number {
+  const where = whereClause(options);
+  const result = getDatabase().query(`DELETE FROM notifications ${where}`).run({
+    sourceId: options.sourceId ?? null,
+  });
   return result.changes;
 }

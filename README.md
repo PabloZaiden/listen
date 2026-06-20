@@ -104,7 +104,6 @@ Listen runs at the root of its own domain and does not support subpath mounting.
 | `LISTEN_DISABLE_PASSKEY` | unset | `true`, `1`, or `yes` bypasses passkey enforcement. |
 | `LISTEN_DISABLE_SAME_ORIGIN_CHECK` | unset | `true`, `1`, or `yes` disables same-origin protection. |
 | `LISTEN_LOG_LEVEL` | `info` | Server log level. |
-| `LISTEN_WEB_DIST_DIR` | unset | Optional prebuilt web UI directory to serve instead of the Bun HTML entrypoint. |
 | `LISTEN_WEBHOOK_URL` | unset | CLI webhook override for `listen notify`. |
 
 ## Security model
@@ -120,9 +119,25 @@ bun run build
 bun run test
 ```
 
-The dev server runs the Bun-native TypeScript server and serves the React app from `src/index.html`, so frontend and backend changes are watched by Bun. Production web builds are emitted to `apps/web/dist`; generated web assets do not live under `src/`.
+The dev server runs the Bun-native TypeScript server and serves the React app from `src/index.html`, so frontend and backend changes are watched by Bun. Production builds emit a single `listen` binary that serves the API and web UI together.
 
 The project uses Bun workspaces, TypeScript, React, SQLite through `bun:sqlite`, and `@simplewebauthn` for passkey flows.
+
+### Demo data for UI development
+
+Use a temporary data directory for visual testing so generated webhook URLs stay local and disposable:
+
+```bash
+LISTEN_DATA_DIR="$(mktemp -d)" LISTEN_DISABLE_PASSKEY=true bun run dev
+```
+
+In another terminal, seed realistic sources and notifications through the public app APIs and source-specific webhook URLs:
+
+```bash
+bun run seed:demo
+```
+
+Open `http://127.0.0.1:3000/`. `LISTEN_DEMO_RESET=true bun run seed:demo` clears notifications first, but source reset requires a fresh `LISTEN_DATA_DIR` because Listen only supports soft-disabling sources.
 
 ## Release artifacts
 
