@@ -2,7 +2,7 @@ import React from "react";
 
 interface EmptyStateProps {
   title: string;
-  description: string;
+  description?: string;
   action?: React.ReactNode;
 }
 
@@ -10,7 +10,7 @@ export function EmptyState({ title, description, action }: EmptyStateProps): Rea
   return (
     <div className="ui-empty-state">
       <h3>{title}</h3>
-      <p>{description}</p>
+      {description ? <p>{description}</p> : null}
       {action ? <div>{action}</div> : null}
     </div>
   );

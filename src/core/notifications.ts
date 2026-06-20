@@ -141,10 +141,10 @@ export function deleteNotification(id: string): boolean {
   return deleted;
 }
 
-export function deleteNotifications(sourceId?: string): number {
-  const deletedCount = deletePersistedNotifications(sourceId);
-  emit({ type: "notifications.deleted", sourceId, deletedCount, unreadCount: getUnreadNotificationCount() });
-  log.info("Notifications deleted", { sourceId, deletedCount });
+export function deleteNotifications(options: { sourceId?: string; opened?: boolean } = {}): number {
+  const deletedCount = deletePersistedNotifications(options);
+  emit({ type: "notifications.deleted", sourceId: options.sourceId, deletedCount, unreadCount: getUnreadNotificationCount() });
+  log.info("Notifications deleted", { sourceId: options.sourceId, opened: options.opened, deletedCount });
   return deletedCount;
 }
 

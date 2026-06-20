@@ -2,7 +2,7 @@ const target = Bun.argv[2] ?? "all";
 
 const testArgs = {
   all: ["test", "--max-concurrency=1"],
-  backend: ["test", "--max-concurrency=1", "tests/api", "tests/integration"],
+  backend: ["test", "--max-concurrency=1", "tests/api", "tests/core"],
   frontend: ["test", "--max-concurrency=1", "tests/cli"],
 }[target];
 
