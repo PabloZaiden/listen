@@ -124,6 +124,22 @@ The dev server runs the Bun-native TypeScript server and serves the React app fr
 
 The project uses Bun workspaces, TypeScript, React, SQLite through `bun:sqlite`, and `@simplewebauthn` for passkey flows.
 
+### Demo data for UI development
+
+Use a temporary data directory for visual testing so generated webhook URLs stay local and disposable:
+
+```bash
+LISTEN_DATA_DIR="$(mktemp -d)" LISTEN_DISABLE_PASSKEY=true bun run dev
+```
+
+In another terminal, seed realistic sources and notifications through the public app APIs and source-specific webhook URLs:
+
+```bash
+bun run seed:demo
+```
+
+Open `http://127.0.0.1:3000/`. `LISTEN_DEMO_RESET=true bun run seed:demo` clears notifications first, but source reset requires a fresh `LISTEN_DATA_DIR` because Listen only supports soft-disabling sources.
+
 ## Release artifacts
 
 Release workflows build Linux and macOS binaries for x64 and arm64 with `.sha256` checksum assets, publish Docker images to GHCR, and support `listen update` through `@pablozaiden/installer`.

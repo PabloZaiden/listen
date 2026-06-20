@@ -3,8 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#374151" />
+    <meta name="theme-color" content="#f8fafc" />
     <title>Listen</title>
+    <script>
+      (() => {
+        const key = "listen-theme-preference";
+        const preference = localStorage.getItem(key);
+        const theme = preference === "light" || preference === "dark" || preference === "system" ? preference : "system";
+        const resolved = theme === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : theme;
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.dataset.resolvedTheme = resolved;
+        document.querySelector('meta[name="theme-color"]')?.setAttribute("content", resolved === "dark" ? "#111827" : "#f8fafc");
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -5,6 +5,9 @@ import {
   getNotificationById,
   insertNotification,
   listNotifications as listPersistedNotifications,
+  markNotificationRead as markPersistedNotificationRead,
+  markNotificationUnread as markPersistedNotificationUnread,
+  markNotificationsRead as markPersistedNotificationsRead,
   markNotificationOpened,
   countUnreadNotifications,
   type PersistedNotification,
@@ -143,4 +146,45 @@ export function deleteNotifications(sourceId?: string): number {
   emit({ type: "notifications.deleted", sourceId, deletedCount, unreadCount: getUnreadNotificationCount() });
   log.info("Notifications deleted", { sourceId, deletedCount });
   return deletedCount;
+}
+
+export function markNotificationRead(id: string): NotificationListItem | undefined {
+  const existing = getNotificationById(id);
+  if (!existing) {
+    log.warn("Notification read requested but notification was not found", { notificationId: id });
+    return undefined;
+  }
+  const read = markPersistedNotificationRead(id, nowIso());
+  if (!read) {
+    log.warn("Notification read update failed after lookup", { notificationId: id });
+    return undefined;
+  }
+  const item = toNotificationListItem(read);
+  emit({ type: "notification.opened", notification: item, unreadCount: getUnreadNotificationCount() });
+  log.info("Notification marked read", { notificationId: id, sourceId: item.sourceId });
+  return item;
+}
+
+export function markNotificationUnread(id: string): NotificationListItem | undefined {
+  const existing = getNotificationById(id);
+  if (!existing) {
+    log.warn("Notification unread requested but notification was not found", { notificationId: id });
+    return undefined;
+  }
+  const unread = markPersistedNotificationUnread(id);
+  if (!unread) {
+    log.warn("Notification unread update failed after lookup", { notificationId: id });
+    return undefined;
+  }
+  const item = toNotificationListItem(unread);
+  emit({ type: "notification.opened", notification: item, unreadCount: getUnreadNotificationCount() });
+  log.info("Notification marked unread", { notificationId: id, sourceId: item.sourceId });
+  return item;
+}
+
+export function markNotificationsRead(sourceId?: string): number {
+  const updatedCount = markPersistedNotificationsRead({ sourceId, opened: false }, nowIso());
+  emit({ type: "notifications.opened", sourceId, updatedCount, unreadCount: getUnreadNotificationCount() });
+  log.info("Notifications marked read", { sourceId, updatedCount });
+  return updatedCount;
 }

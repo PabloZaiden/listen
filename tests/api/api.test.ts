@@ -385,6 +385,56 @@ describe("API", () => {
     expect(missingResponse.status).toBe(404);
   });
 
+  test("notification read and unread mutations update unread counts", async () => {
+    const created = await createSource();
+    const webhookResponse = await webhook(created.webhookUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "A", shortDescription: "B", markdownContent: "C" }),
+    });
+    const notification = await json<{ id: string }>(webhookResponse);
+
+    const afterCreate = await json<{ unreadCount: number }>(await request("/api/notifications"));
+    const initialUnreadCount = afterCreate.unreadCount - 1;
+
+    const readResponse = await request(`/api/notifications/${notification.id}/read`, { method: "POST" });
+    expect(readResponse.status).toBe(200);
+    expect((await json<{ notification: { openedAt?: string } }>(readResponse)).notification.openedAt).toBeTruthy();
+    const afterRead = await json<{ unreadCount: number }>(await request("/api/notifications"));
+    expect(afterRead.unreadCount).toBe(initialUnreadCount);
+
+    const unreadResponse = await request(`/api/notifications/${notification.id}/unread`, { method: "POST" });
+    expect(unreadResponse.status).toBe(200);
+    expect((await json<{ notification: { openedAt?: string } }>(unreadResponse)).notification.openedAt).toBeUndefined();
+    const afterUnread = await json<{ unreadCount: number }>(await request("/api/notifications"));
+    expect(afterUnread.unreadCount).toBe(initialUnreadCount + 1);
+  });
+
+  test("bulk mark read can target one source", async () => {
+    const first = await createSource();
+    const secondResponse = await request("/api/sources", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Other" }),
+    });
+    const second = await json<{ source: { id: string }; webhookUrl: string }>(secondResponse);
+
+    for (const url of [first.webhookUrl, second.webhookUrl]) {
+      await webhook(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: "A", shortDescription: "B", markdownContent: "C" }),
+      });
+    }
+
+    const bulkRead = await request(`/api/notifications/read?sourceId=${first.source.id}`, { method: "POST" });
+    expect(await json(bulkRead)).toMatchObject({ updatedCount: 1 });
+    const firstUnread = await json<{ notifications: unknown[] }>(await request(`/api/notifications?sourceId=${first.source.id}&opened=false`));
+    expect(firstUnread.notifications).toHaveLength(0);
+    const secondUnread = await json<{ notifications: unknown[] }>(await request(`/api/notifications?sourceId=${second.source.id}&opened=false`));
+    expect(secondUnread.notifications).toHaveLength(1);
+  });
+
   test("notification list returns global unread count after open and delete changes", async () => {
     const initial = await json<{ unreadCount: number }>(await request("/api/notifications"));
     const first = await createSource();
