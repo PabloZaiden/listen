@@ -509,6 +509,51 @@ small {
   gap: 0.5rem;
 }
 
+.notification-actions-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.notification-actions-menu summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.8rem;
+  background: var(--surface-elevated);
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 800;
+  list-style: none;
+  padding: 0.55rem 0.75rem;
+}
+
+.notification-actions-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.notification-actions-menu[open] summary {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.notification-actions-menu-content {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.35rem);
+  z-index: 10;
+  display: grid;
+  gap: 0.35rem;
+  width: max-content;
+  min-width: 11rem;
+  border: 1px solid var(--border);
+  border-radius: 0.9rem;
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  padding: 0.4rem;
+}
+
 .unread-dot {
   width: 0.55rem;
   height: 0.55rem;
@@ -817,6 +862,11 @@ code {
   .settings-card-actions {
     justify-content: flex-start;
   }
+
+  .notification-actions-menu-content {
+    left: auto;
+    right: 0;
+  }
 }
 
 @media (max-width: 540px) {
@@ -845,6 +895,20 @@ code {
 
   .ui-button {
     width: 100%;
+  }
+
+  .notification-actions-menu {
+    width: 100%;
+  }
+
+  .notification-actions-menu summary {
+    width: 100%;
+  }
+
+  .notification-actions-menu-content {
+    position: static;
+    width: 100%;
+    margin-top: 0.35rem;
   }
 
   .segmented-control {

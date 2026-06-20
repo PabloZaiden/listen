@@ -20,6 +20,15 @@ if (!result.success) {
   process.exit(1);
 }
 
+const indexPath = `${outDir}/index.html`;
+const indexHtml = await Bun.file(indexPath).text();
+await Bun.write(
+  indexPath,
+  indexHtml
+    .replaceAll('href="./', 'href="/')
+    .replaceAll('src="./', 'src="/'),
+);
+
 await Bun.write(`${outDir}/service-worker`, Bun.file(`${sharedSrcDir}/web/service-worker.ts`));
 await Bun.write(`${outDir}/manifest.webmanifest`, Bun.file(`${sharedSrcDir}/web/manifest.webmanifest`));
 await Bun.$`mkdir -p ${outDir}/icons`.quiet();

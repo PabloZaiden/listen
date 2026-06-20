@@ -458,11 +458,14 @@ function InboxView({
                     <span>{notification.shortDescription}</span>
                     <small><Badge variant="info">{notification.source}</Badge><span title={formatTimestamp(notification.createdAt)}>{relativeTimestamp(notification.createdAt)}</span></small>
                   </button>
-                  <div className="row-actions">
-                    <Button type="button" size="sm" variant="ghost" onClick={() => onCopyLink(notification.id)}>Copy link</Button>
-                    <Button type="button" size="sm" variant="ghost" onClick={() => onToggleRead(notification)}>{notification.openedAt ? "Mark unread" : "Mark read"}</Button>
-                    <Button type="button" size="sm" variant="danger" onClick={() => onDelete(notification.id)}>Delete</Button>
-                  </div>
+                  <details className="notification-actions-menu">
+                    <summary aria-label={`Actions for ${notification.title}`}>Actions</summary>
+                    <div className="notification-actions-menu-content">
+                      <Button type="button" size="sm" variant="ghost" onClick={() => onCopyLink(notification.id)}>Copy link</Button>
+                      <Button type="button" size="sm" variant="ghost" onClick={() => onToggleRead(notification)}>{notification.openedAt ? "Mark unread" : "Mark read"}</Button>
+                      <Button type="button" size="sm" variant="danger" onClick={() => onDelete(notification.id)}>Delete</Button>
+                    </div>
+                  </details>
                 </article>
               ))}
             </div>
