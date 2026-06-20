@@ -14,6 +14,7 @@ import { filterNotifications, groupNotifications, type InboxFilter } from "./not
 import { normalizeMarkdownForDisplay } from "./markdown";
 import { type AppRoute, parseAppRoute, routePath } from "./routes";
 import { applyThemePreference, readStoredThemePreference, THEME_STORAGE_KEY, type ThemePreference } from "./theme";
+import { ActionMenu } from "./ui/ActionMenu";
 import { Badge } from "./ui/Badge";
 import { Button } from "./ui/Button";
 import { ConfirmModal } from "./ui/ConfirmModal";
@@ -415,9 +416,11 @@ function InboxView({
           <p>What arrived, from whom, when, and what still needs attention.</p>
         </div>
         <div className="view-actions">
-          <Button type="button" variant="ghost" onClick={onRefresh}>Refresh</Button>
-          <Button type="button" variant="secondary" onClick={() => onMarkVisibleRead(visible)} disabled={!visible.some((notification) => !notification.openedAt)}>Mark visible read</Button>
-          <Button type="button" variant="danger" onClick={() => onDeleteVisible(visible)} disabled={visible.length === 0}>Delete visible</Button>
+          <ActionMenu label="Inbox actions">
+            <Button type="button" variant="ghost" onClick={onRefresh}>Refresh</Button>
+            <Button type="button" variant="secondary" onClick={() => onMarkVisibleRead(visible)} disabled={!visible.some((notification) => !notification.openedAt)}>Mark visible read</Button>
+            <Button type="button" variant="danger" onClick={() => onDeleteVisible(visible)} disabled={visible.length === 0}>Delete visible</Button>
+          </ActionMenu>
         </div>
       </div>
 
@@ -458,14 +461,11 @@ function InboxView({
                     <span>{notification.shortDescription}</span>
                     <small><Badge variant="info">{notification.source}</Badge><span title={formatTimestamp(notification.createdAt)}>{relativeTimestamp(notification.createdAt)}</span></small>
                   </button>
-                  <details className="notification-actions-menu">
-                    <summary aria-label={`Actions for ${notification.title}`}>Actions</summary>
-                    <div className="notification-actions-menu-content">
-                      <Button type="button" size="sm" variant="ghost" onClick={() => onCopyLink(notification.id)}>Copy link</Button>
-                      <Button type="button" size="sm" variant="ghost" onClick={() => onToggleRead(notification)}>{notification.openedAt ? "Mark unread" : "Mark read"}</Button>
-                      <Button type="button" size="sm" variant="danger" onClick={() => onDelete(notification.id)}>Delete</Button>
-                    </div>
-                  </details>
+                  <ActionMenu label={`Actions for ${notification.title}`}>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => onCopyLink(notification.id)}>Copy link</Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => onToggleRead(notification)}>{notification.openedAt ? "Mark unread" : "Mark read"}</Button>
+                    <Button type="button" size="sm" variant="danger" onClick={() => onDelete(notification.id)}>Delete</Button>
+                  </ActionMenu>
                 </article>
               ))}
             </div>
@@ -556,25 +556,27 @@ function NotificationDetailView({
 
       <Panel className="detail-panel">
         <div className="detail-actions-top">
-          <Button type="button" variant="ghost" onClick={() => onCopyLink(detail.id)}>Copy link</Button>
-          {detail.sourceId ? <Button type="button" variant="ghost" onClick={() => onFilterSource(detail.sourceId ?? "")}>Filter by source</Button> : null}
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => onToggleRead({
-              id: detail.id,
-              title: detail.title,
-              shortDescription: detail.shortDescription,
-              source: detail.source,
-              sourceId: detail.sourceId,
-              icon: detail.icon,
-              createdAt: detail.createdAt,
-              openedAt: currentOpenedAt,
-            })}
-          >
-            {currentOpenedAt ? "Mark unread" : "Mark read"}
-          </Button>
-          <Button type="button" variant="danger" onClick={() => onDelete(detail.id)}>Delete</Button>
+          <ActionMenu label="Notification actions">
+            <Button type="button" variant="ghost" onClick={() => onCopyLink(detail.id)}>Copy link</Button>
+            {detail.sourceId ? <Button type="button" variant="ghost" onClick={() => onFilterSource(detail.sourceId ?? "")}>Filter by source</Button> : null}
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => onToggleRead({
+                id: detail.id,
+                title: detail.title,
+                shortDescription: detail.shortDescription,
+                source: detail.source,
+                sourceId: detail.sourceId,
+                icon: detail.icon,
+                createdAt: detail.createdAt,
+                openedAt: currentOpenedAt,
+              })}
+            >
+              {currentOpenedAt ? "Mark unread" : "Mark read"}
+            </Button>
+            <Button type="button" variant="danger" onClick={() => onDelete(detail.id)}>Delete</Button>
+          </ActionMenu>
         </div>
         <div className="detail-summary">
           {detail.icon ? <img className="detail-icon" src={detail.icon} alt="" /> : <div className="detail-icon fallback" aria-hidden="true">{detail.source.slice(0, 1).toUpperCase()}</div>}
@@ -695,8 +697,10 @@ function SourcesView({ sources, refreshSources, requestConfirm }: { sources: Sou
             <strong>Copy this webhook URL now. Listen will not show the token again.</strong>
             <code>{webhookUrl}</code>
             <div className="row">
-              <Button type="button" variant="primary" onClick={() => void copyWebhook()}>Copy URL</Button>
-              <Button type="button" variant="ghost" onClick={() => setWebhookUrl(undefined)} disabled={!copiedWebhook}>Dismiss after copied</Button>
+              <ActionMenu label="Webhook URL actions" align="left">
+                <Button type="button" variant="primary" onClick={() => void copyWebhook()}>Copy URL</Button>
+                <Button type="button" variant="ghost" onClick={() => setWebhookUrl(undefined)} disabled={!copiedWebhook}>Dismiss after copied</Button>
+              </ActionMenu>
             </div>
           </div>
         ) : null}
@@ -730,8 +734,10 @@ function SourcesView({ sources, refreshSources, requestConfirm }: { sources: Sou
                 <small>Created {formatTimestamp(source.createdAt)} • Last used {source.lastUsedAt ? formatTimestamp(source.lastUsedAt) : "Never used"}</small>
               </div>
               <div className="row-actions">
-                <Button type="button" size="sm" variant="secondary" onClick={() => rotate(source)}>Rotate token</Button>
-                <Button type="button" size="sm" variant="danger" disabled={Boolean(source.disabledAt)} onClick={() => disable(source)}>Disable</Button>
+                <ActionMenu label={`Actions for ${source.name}`}>
+                  <Button type="button" size="sm" variant="secondary" onClick={() => rotate(source)}>Rotate token</Button>
+                  <Button type="button" size="sm" variant="danger" disabled={Boolean(source.disabledAt)} onClick={() => disable(source)}>Disable</Button>
+                </ActionMenu>
               </div>
             </article>
           ))}
@@ -882,8 +888,10 @@ function SettingsView({
             <p>{config.passkeyAuth.passkeyDisabled ? "Recovery mode is enabled by LISTEN_DISABLE_PASSKEY. Remove it to restore passkey enforcement." : "Protected APIs use the current passkey session."}</p>
           </div>
           <div className="settings-card-actions">
-            <Button type="button" onClick={() => void json("/api/passkey-auth/logout", { method: "POST" }).then(refreshConfig)}>Logout</Button>
-            <Button type="button" variant="danger" onClick={deletePasskey}>Delete passkey</Button>
+            <ActionMenu label="Security actions">
+              <Button type="button" onClick={() => void json("/api/passkey-auth/logout", { method: "POST" }).then(refreshConfig)}>Logout</Button>
+              <Button type="button" variant="danger" onClick={deletePasskey}>Delete passkey</Button>
+            </ActionMenu>
           </div>
         </section>
 

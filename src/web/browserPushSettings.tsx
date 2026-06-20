@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import type { BrowserPushConfigResponse, BrowserPushStatusResponse, BrowserPushSubscription } from "@listen/contracts";
 import { appFetch } from "@listen/client-sdk";
+import { ActionMenu } from "./ui/ActionMenu";
 import { Badge } from "./ui/Badge";
 import { Button } from "./ui/Button";
 
@@ -241,6 +242,16 @@ export function BrowserPushSettings({ onEnabled, onDisabled }: { onEnabled?: () 
     error: "Could not update browser notifications.",
   }[state.status];
 
+  const primaryAction = state.status === "subscribed" ? (
+    <Button type="button" onClick={() => void unsubscribe()} disabled={state.busy}>
+      {state.busy ? "Disabling..." : "Disable on this browser"}
+    </Button>
+  ) : (
+    <Button type="button" variant="primary" onClick={() => void subscribe()} disabled={state.busy || state.status === "loading" || state.status === "unsupported" || state.status === "denied"}>
+      {state.busy ? "Enabling..." : "Enable on this browser"}
+    </Button>
+  );
+
   return (
     <section className="settings-card browser-push-settings" aria-live="polite">
       <div>
@@ -255,16 +266,12 @@ export function BrowserPushSettings({ onEnabled, onDisabled }: { onEnabled?: () 
         {state.message ? <p className="error">{state.message}</p> : null}
       </div>
       <div className="settings-card-actions">
-        {state.status === "subscribed" ? (
-          <Button type="button" onClick={() => void unsubscribe()} disabled={state.busy}>
-            {state.busy ? "Disabling..." : "Disable on this browser"}
-          </Button>
-        ) : (
-          <Button type="button" variant="primary" onClick={() => void subscribe()} disabled={state.busy || state.status === "loading" || state.status === "unsupported" || state.status === "denied"}>
-            {state.busy ? "Enabling..." : "Enable on this browser"}
-          </Button>
-        )}
-        {state.status === "error" ? <Button type="button" variant="ghost" onClick={() => void actions.refresh()}>Retry</Button> : null}
+        {state.status === "error" ? (
+          <ActionMenu label="Browser notification actions">
+            {primaryAction}
+            <Button type="button" variant="ghost" onClick={() => void actions.refresh()}>Retry</Button>
+          </ActionMenu>
+        ) : primaryAction}
       </div>
     </section>
   );

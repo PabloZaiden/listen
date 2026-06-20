@@ -70,6 +70,15 @@ a:focus-visible {
   outline-offset: 2px;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
 h1,
 h2,
 h3,
@@ -509,16 +518,17 @@ small {
   gap: 0.5rem;
 }
 
-.notification-actions-menu {
+.action-menu {
   position: relative;
   flex: 0 0 auto;
 }
 
-.notification-actions-menu summary {
+.action-menu summary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: 44px;
+  min-width: 44px;
   border: 1px solid var(--border-strong);
   border-radius: 0.8rem;
   background: var(--surface-elevated);
@@ -526,19 +536,32 @@ small {
   cursor: pointer;
   font-weight: 800;
   list-style: none;
-  padding: 0.55rem 0.75rem;
+  padding: 0.55rem;
 }
 
-.notification-actions-menu summary::-webkit-details-marker {
+.action-menu summary::-webkit-details-marker {
   display: none;
 }
 
-.notification-actions-menu[open] summary {
+.action-menu[open] summary {
   border-color: var(--accent);
   color: var(--accent);
 }
 
-.notification-actions-menu-content {
+.action-menu-icon {
+  display: grid;
+  gap: 0.19rem;
+  width: 1.1rem;
+}
+
+.action-menu-icon span {
+  display: block;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.action-menu-content {
   position: absolute;
   right: 0;
   top: calc(100% + 0.35rem);
@@ -552,6 +575,16 @@ small {
   background: var(--surface);
   box-shadow: var(--shadow-md);
   padding: 0.4rem;
+}
+
+.action-menu-left .action-menu-content {
+  left: 0;
+  right: auto;
+}
+
+.action-menu-content .ui-button {
+  justify-content: flex-start;
+  width: 100%;
 }
 
 .unread-dot {
@@ -858,14 +891,13 @@ code {
   }
 
   .row-actions,
-  .view-actions,
   .settings-card-actions {
     justify-content: flex-start;
   }
 
-  .notification-actions-menu-content {
-    left: auto;
-    right: 0;
+  .view-actions {
+    justify-content: flex-end;
+    width: 100%;
   }
 }
 
@@ -897,18 +929,29 @@ code {
     width: 100%;
   }
 
-  .notification-actions-menu {
-    width: 100%;
+  .action-menu {
+    width: auto;
   }
 
-  .notification-actions-menu summary {
-    width: 100%;
+  .action-menu summary {
+    width: auto;
   }
 
-  .notification-actions-menu-content {
-    position: static;
-    width: 100%;
-    margin-top: 0.35rem;
+  .action-menu-content {
+    left: 0;
+    right: auto;
+    width: max-content;
+    max-width: min(17rem, calc(100vw - 2rem));
+  }
+
+  .detail-actions-top .action-menu-content {
+    left: auto;
+    right: 0;
+  }
+
+  .view-actions .action-menu-content {
+    left: auto;
+    right: 0;
   }
 
   .segmented-control {
