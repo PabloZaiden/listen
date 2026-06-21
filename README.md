@@ -25,19 +25,13 @@ LISTEN_HOST=0.0.0.0 LISTEN_PORT=3000 listen serve
 
 Native runs default to `127.0.0.1:3000`. Docker uses `0.0.0.0:8080` and stores data in `/app/data`.
 
-## Server operations
-
-The Settings view includes a protected "Kill server" action. It calls `POST /api/server/kill`, returns a success response first, then intentionally terminates the process so containerized deployments can restart it.
-
 ## Browser notifications
 
 The Settings view includes per-browser Web Push subscriptions. Click "Enable on this browser" to allow Listen to send system notifications to the current browser profile. Repeat this on each desktop or mobile browser where you want notifications. If the browser is already subscribed, Settings shows a disable action for only that browser.
 
-Listen uses standards-based Web Push with a TypeScript service worker served directly at `/service-worker`; the production web build copies that same static source into `dist/service-worker`. VAPID keys are generated once and persisted in the data directory, so existing subscriptions survive server restarts. The public origin used for VAPID is derived from the same request origin logic used to generate webhook URLs; no extra public-origin environment variable is required. Local `http:` development uses a `mailto:` VAPID subject because Web Push requires VAPID subjects to be `https:` or `mailto:`.
+Listen uses standards-based Web Push with a TypeScript service worker served directly at `/service-worker`. VAPID keys are generated once and persisted in the data directory. The public origin used for VAPID is derived from the same request origin logic used to generate webhook URLs. Local `http:` development uses a `mailto:` VAPID subject because Web Push requires VAPID subjects to be `https:` or `mailto:`.
 
 Safari support uses the modern Web Push API. On iPhone and iPad, install Listen to the Home Screen first, open it from the Home Screen web app, then subscribe from Settings. Production browser notifications require HTTPS; localhost can be used for development.
-
-When a notification is clicked, Listen opens or focuses the app and navigates to that notification's detail view.
 
 ## First passkey setup
 
@@ -50,8 +44,6 @@ Use the Sources view in the UI. Each source gets a unique long random token embe
 ```text
 https://listen.example.com/api/webhooks/source-id/token
 ```
-
-Only the token hash is stored. Disabled sources reject future webhooks while preserving existing notifications.
 
 ## Configuring the CLI for agents
 
@@ -70,8 +62,6 @@ listen notify --title "Task completed" --description "The agent finished success
 listen notify --title "Review needed" --description "The agent needs attention" --markdown-file ./message.md
 listen notify --title "Icon" --description "PNG attached" --markdown "Done." --icon-file ./icon.png
 ```
-
-Markdown is rendered without raw HTML execution. Optional icons must be PNG files and are sent as PNG data URLs.
 
 ## Docker deployment
 
@@ -106,10 +96,6 @@ Listen runs at the root of its own domain and does not support subpath mounting.
 | `LISTEN_LOG_LEVEL` | `info` | Server log level. |
 | `LISTEN_WEBHOOK_URL` | unset | CLI webhook override for `listen notify`. |
 
-## Security model
-
-Passkey authentication protects all non-public APIs, `/api/ws`, and browser push subscription management. The webhook ingestion endpoint is the only unauthenticated write endpoint and requires a source-specific URL token. Request logs redact webhook token path segments. Same-origin checks protect cookie-authenticated state-changing browser requests and WebSocket upgrades. Webhook payloads cannot override the server-derived source name. Browser push endpoints and cryptographic key material are treated as operational secrets and are not logged.
-
 ## Development
 
 ```bash
@@ -118,10 +104,6 @@ bun run dev
 bun run build
 bun run test
 ```
-
-The dev server runs the Bun-native TypeScript server and serves the React app from `src/index.html`, so frontend and backend changes are watched by Bun. Production builds emit a single `listen` binary that serves the API and web UI together.
-
-The project uses Bun workspaces, TypeScript, React, SQLite through `bun:sqlite`, and `@simplewebauthn` for passkey flows.
 
 ### Demo data for UI development
 
