@@ -2,13 +2,23 @@ import { describe, expect, test } from "bun:test";
 
 const styles = await Bun.file("src/web/styles.css").text();
 
+function normalizeSelectorList(selector: string): string {
+  return selector
+    .split(",")
+    .map((item) => item.replace(/\s+/g, " ").trim())
+    .join(",");
+}
+
 function cssBlock(selector: string): string {
-  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = styles.match(new RegExp(`${escaped}\\s*\\{(?<body>[^}]*)\\}`));
-  if (!match?.groups?.["body"]) {
-    throw new Error(`Missing CSS block for ${selector}`);
+  const normalizedSelector = normalizeSelectorList(selector);
+
+  for (const match of styles.matchAll(/(?<selector>[^{}]+)\s*\{(?<body>[^{}]*)\}/g)) {
+    if (normalizeSelectorList(match.groups?.["selector"] ?? "") === normalizedSelector) {
+      return match.groups?.["body"] ?? "";
+    }
   }
-  return match.groups["body"];
+
+  throw new Error(`Missing CSS block for ${selector}`);
 }
 
 function expectDeclaration(selector: string, declaration: string): void {
