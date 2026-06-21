@@ -229,6 +229,7 @@ p {
 .notification-list,
 .source-table {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.25rem;
 }
 
@@ -308,6 +309,7 @@ p {
   padding: calc(1rem + env(safe-area-inset-top)) clamp(1rem, 3vw, 2rem) 1rem;
   border-bottom: 1px solid var(--border);
   background: var(--chrome-bg);
+  min-width: 0;
 }
 
 .shell-icon-nav .ui-icon-button,
@@ -337,6 +339,7 @@ p {
 }
 
 .view-stack > :not(.view-header) {
+  min-width: 0;
   margin-right: clamp(1rem, 3vw, 2rem);
   margin-left: clamp(1rem, 3vw, 2rem);
 }
@@ -346,6 +349,8 @@ p {
 }
 
 .view-header h1 {
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -365,6 +370,8 @@ p {
 .view-header > div {
   display: flex;
   align-items: center;
+  flex: 1 1 auto;
+  max-width: 100%;
 }
 
 .view-header p,
@@ -724,23 +731,31 @@ small {
 }
 
 .detail-actions-row {
+  min-width: 0;
   justify-content: flex-end;
   margin-top: 1rem;
 }
 
 .detail-header h1 {
-  max-width: none;
+  max-width: 100%;
 }
 
 .detail-panel {
-  width: 100%;
-  max-width: none;
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .detail-summary {
   display: flex;
   gap: 0.8rem;
-  max-width: none;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.detail-summary > div {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .detail-icon {
@@ -752,29 +767,46 @@ small {
 }
 
 .detail-summary h2 {
+  max-width: 100%;
+  overflow-wrap: anywhere;
   margin-bottom: 0.25rem;
   font-size: 1rem;
   font-weight: 650;
 }
 
 .detail-summary p {
+  max-width: 100%;
+  overflow-wrap: anywhere;
   margin-bottom: 0;
   color: var(--text-muted);
 }
 
 .markdown {
-  max-width: none;
+  min-width: 0;
+  max-width: 100%;
   margin-top: 1.25rem;
   line-height: 1.65;
+  overflow-wrap: anywhere;
 }
 
 .markdown h1,
 .markdown h2,
 .markdown h3 {
+  max-width: 100%;
   line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.markdown p,
+.markdown li,
+.markdown td,
+.markdown th {
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .markdown pre {
+  max-width: 100%;
   overflow-x: auto;
   border-radius: 0.5rem;
   background: var(--surface-muted);
@@ -785,10 +817,12 @@ small {
   border-radius: 0.35rem;
   background: var(--surface-muted);
   padding: 0.12rem 0.28rem;
+  overflow-wrap: anywhere;
 }
 
 .markdown pre code {
   padding: 0;
+  overflow-wrap: normal;
 }
 
 .markdown blockquote {
@@ -799,8 +833,10 @@ small {
 }
 
 .markdown table {
+  max-width: 100%;
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .markdown th,
@@ -813,6 +849,7 @@ small {
   color: var(--text);
   text-decoration: underline;
   text-underline-offset: 2px;
+  overflow-wrap: anywhere;
 }
 
 .source-create-grid {

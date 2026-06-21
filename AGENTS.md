@@ -30,7 +30,7 @@ Use `async`/`await` for I/O. Keep event delivery synchronous and best-effort; a 
 
 ## React Components
 
-Prefer small components and hooks. Components over 300 LOC should be decomposed. Use AbortController in effects that load data. UI changes should be manually checked on desktop and mobile when possible.
+Prefer small components and hooks. Components over 300 LOC should be decomposed. Use AbortController in effects that load data. UI changes should be manually checked on desktop and mobile when possible. For UI-specific changes and fixes, capture screenshots of the affected states and inspect them before calling the work complete when feasible.
 
 ## Comments
 
