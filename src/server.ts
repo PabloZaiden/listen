@@ -144,6 +144,7 @@ function parseLegacyPasskeyTransports(value: string, credentialId: string): stri
 }
 
 function migrateLegacyListenData(db: Database, app: WebAppServer<ListenRealtimeEvent>): void {
+  // Temporary one-time migration for pre-framework Listen data; remove after the migration window closes.
   app.store.initialize();
   let owner = app.store.getOwnerUser() ?? app.store.getUserByUsername("admin");
   if (!owner && legacyPasskeyExists(db)) {

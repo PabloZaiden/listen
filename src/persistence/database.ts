@@ -86,9 +86,6 @@ export function initializeDatabase(dataDir = process.env["LISTEN_DATA_DIR"] ?? "
     CREATE INDEX IF NOT EXISTS idx_notifications_created_at
     ON notifications(created_at DESC, id DESC);
 
-    CREATE INDEX IF NOT EXISTS idx_notifications_user_created_at
-    ON notifications(user_id, created_at DESC, id DESC);
-
     CREATE INDEX IF NOT EXISTS idx_notifications_source_created_at
     ON notifications(source_id, created_at DESC, id DESC);
 
@@ -97,9 +94,6 @@ export function initializeDatabase(dataDir = process.env["LISTEN_DATA_DIR"] ?? "
 
     CREATE INDEX IF NOT EXISTS idx_browser_push_active_next_attempt
     ON browser_push_subscriptions(disabled_at, next_attempt_at);
-
-    CREATE INDEX IF NOT EXISTS idx_browser_push_user_active_next_attempt
-    ON browser_push_subscriptions(user_id, disabled_at, next_attempt_at);
   `);
   runMigrations(database);
   ensureUserIdColumns(database);
@@ -130,6 +124,7 @@ function addColumnIfMissing(db: Database, table: string, column: string, definit
 }
 
 function ensureUserIdColumns(db: Database): void {
+  // Temporary one-time migration for pre-framework Listen databases; remove after the migration window closes.
   addColumnIfMissing(db, "webhook_sources", "user_id", "TEXT");
   addColumnIfMissing(db, "notifications", "user_id", "TEXT");
   addColumnIfMissing(db, "browser_push_subscriptions", "user_id", "TEXT");
