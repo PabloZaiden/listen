@@ -11,6 +11,7 @@ export interface PersistedVapidKeys {
 
 export interface PersistedBrowserPushSubscription {
   id: string;
+  userId: string;
   endpoint: string;
   p256dh: string;
   auth: string;
@@ -27,6 +28,7 @@ export interface PersistedBrowserPushSubscription {
 
 interface BrowserPushSubscriptionRow {
   id: string;
+  user_id: string | null;
   endpoint: string;
   p256dh: string;
   auth: string;
@@ -44,6 +46,7 @@ interface BrowserPushSubscriptionRow {
 function mapSubscription(row: BrowserPushSubscriptionRow): PersistedBrowserPushSubscription {
   return {
     id: row.id,
+    userId: row.user_id ?? "",
     endpoint: row.endpoint,
     p256dh: row.p256dh,
     auth: row.auth,
@@ -70,22 +73,25 @@ export function setPersistedVapidKeys(keys: PersistedVapidKeys): void {
   setPreference(VAPID_PRIVATE_KEY_PREFERENCE, keys.privateKey);
 }
 
-export function getBrowserPushSubscriptionByEndpoint(endpoint: string): PersistedBrowserPushSubscription | undefined {
-  const row = getDatabase().query("SELECT * FROM browser_push_subscriptions WHERE endpoint = $endpoint").get({ endpoint }) as BrowserPushSubscriptionRow | null;
+export function getBrowserPushSubscriptionByEndpoint(endpoint: string, userId?: string): PersistedBrowserPushSubscription | undefined {
+  const row = userId
+    ? getDatabase().query("SELECT * FROM browser_push_subscriptions WHERE endpoint = $endpoint AND user_id = $userId").get({ endpoint, userId }) as BrowserPushSubscriptionRow | null
+    : getDatabase().query("SELECT * FROM browser_push_subscriptions WHERE endpoint = $endpoint").get({ endpoint }) as BrowserPushSubscriptionRow | null;
   return row ? mapSubscription(row) : undefined;
 }
 
 export function upsertBrowserPushSubscription(subscription: PersistedBrowserPushSubscription): PersistedBrowserPushSubscription {
   getDatabase().query(`
     INSERT INTO browser_push_subscriptions (
-      id, endpoint, p256dh, auth, expiration_time, user_agent, created_at, updated_at,
+      id, user_id, endpoint, p256dh, auth, expiration_time, user_agent, created_at, updated_at,
       last_success_at, last_failure_at, failure_count, next_attempt_at, disabled_at
     )
     VALUES (
-      $id, $endpoint, $p256dh, $auth, $expirationTime, $userAgent, $createdAt, $updatedAt,
+      $id, $userId, $endpoint, $p256dh, $auth, $expirationTime, $userAgent, $createdAt, $updatedAt,
       $lastSuccessAt, $lastFailureAt, $failureCount, $nextAttemptAt, $disabledAt
     )
     ON CONFLICT(endpoint) DO UPDATE SET
+      user_id = $userId,
       p256dh = $p256dh,
       auth = $auth,
       expiration_time = $expirationTime,
@@ -96,6 +102,7 @@ export function upsertBrowserPushSubscription(subscription: PersistedBrowserPush
       disabled_at = NULL
   `).run({
     id: subscription.id,
+    userId: subscription.userId,
     endpoint: subscription.endpoint,
     p256dh: subscription.p256dh,
     auth: subscription.auth,
@@ -109,17 +116,18 @@ export function upsertBrowserPushSubscription(subscription: PersistedBrowserPush
     nextAttemptAt: subscription.nextAttemptAt ?? null,
     disabledAt: subscription.disabledAt ?? null,
   });
-  return getBrowserPushSubscriptionByEndpoint(subscription.endpoint) ?? subscription;
+  return getBrowserPushSubscriptionByEndpoint(subscription.endpoint, subscription.userId) ?? subscription;
 }
 
-export function listActiveBrowserPushSubscriptions(nowMs: number, nowIso: string): PersistedBrowserPushSubscription[] {
+export function listActiveBrowserPushSubscriptions(nowMs: number, nowIso: string, userId?: string): PersistedBrowserPushSubscription[] {
   const rows = getDatabase().query(`
     SELECT * FROM browser_push_subscriptions
     WHERE disabled_at IS NULL
+      AND ($userId IS NULL OR user_id = $userId)
       AND (expiration_time IS NULL OR expiration_time > $nowMs)
       AND (next_attempt_at IS NULL OR next_attempt_at <= $nowIso)
     ORDER BY created_at ASC, id ASC
-  `).all({ nowMs, nowIso }) as BrowserPushSubscriptionRow[];
+  `).all({ nowMs, nowIso, userId: userId ?? null }) as BrowserPushSubscriptionRow[];
   return rows.map(mapSubscription);
 }
 
@@ -148,7 +156,7 @@ export function markBrowserPushSubscriptionFailed(endpoint: string, at: string, 
   `).run({ endpoint, at, nextAttemptAt });
 }
 
-export function deleteBrowserPushSubscriptionByEndpoint(endpoint: string): boolean {
-  const result = getDatabase().query("DELETE FROM browser_push_subscriptions WHERE endpoint = $endpoint").run({ endpoint });
+export function deleteBrowserPushSubscriptionByEndpoint(endpoint: string, userId?: string): boolean {
+  const result = getDatabase().query("DELETE FROM browser_push_subscriptions WHERE endpoint = $endpoint AND ($userId IS NULL OR user_id = $userId)").run({ endpoint, userId: userId ?? null });
   return result.changes > 0;
 }

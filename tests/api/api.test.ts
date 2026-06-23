@@ -106,21 +106,21 @@ describe("API", () => {
     const response = await request("/api/health");
     expect(response.status).toBe(200);
     expectSecurityHeaders(response);
-    expect(await json<{ ok: boolean }>(response)).toEqual({ ok: true });
+    expect(await json<{ ok: boolean }>(response)).toMatchObject({ ok: true });
   });
 
   test("protected routes reject when passkey is required and no passkey is configured", async () => {
     const response = await request("/api/sources", undefined, { passkeyDisabled: false });
     expect(response.status).toBe(401);
-    expect(response.headers.get("x-passkey-auth-required")).toBe("true");
-    expect(await json(response)).toMatchObject({ error: "passkey_setup_required" });
+    expect(response.headers.get("x-webapp-passkey-required")).toBe("true");
+    expect(await json(response)).toMatchObject({ error: "authentication_required" });
   });
 
   test("server kill route rejects when passkey is required and no passkey is configured", async () => {
     const response = await request("/api/server/kill", { method: "POST" }, { passkeyDisabled: false });
     expect(response.status).toBe(401);
-    expect(response.headers.get("x-passkey-auth-required")).toBe("true");
-    expect(await json(response)).toMatchObject({ error: "passkey_setup_required" });
+    expect(response.headers.get("x-webapp-passkey-required")).toBe("true");
+    expect(await json(response)).toMatchObject({ error: "authentication_required" });
   });
 
   test("server kill route returns success before scheduling shutdown", async () => {
@@ -171,17 +171,16 @@ describe("API", () => {
     expect(await json(response)).toMatchObject({
       passkeyConfigured: false,
       passkeyDisabled: false,
-      passkeyRequired: true,
+      bootstrapRequired: true,
+      passkeyRequired: false,
       authenticated: false,
     });
   });
 
   test("log level preference can be changed at runtime", async () => {
-    const initial = await json<{ level: string; defaultLevel: string; availableLevels: string[]; isFromEnv: boolean }>(await request("/api/preferences/log-level"));
+    const initial = await json<{ level: string; fromEnv: boolean }>(await request("/api/preferences/log-level"));
     expect(initial.level).toBe("info");
-    expect(initial.defaultLevel).toBe("info");
-    expect(initial.availableLevels).toContain("trace");
-    expect(initial.isFromEnv).toBe(false);
+    expect(initial.fromEnv).toBe(false);
 
     const update = await request("/api/preferences/log-level", {
       method: "PUT",
@@ -203,7 +202,7 @@ describe("API", () => {
       body: JSON.stringify({ level: "verbose" }),
     });
     expect(response.status).toBe(400);
-    expect(await json(response)).toMatchObject({ error: "validation_failed" });
+    expect(await json(response)).toMatchObject({ error: "invalid_log_level" });
   });
 
   test("source creation returns webhook URL only from create and list omits it", async () => {
@@ -550,7 +549,7 @@ describe("API", () => {
   test("browser push routes are protected", async () => {
     const response = await request("/api/browser-push/config", undefined, { passkeyDisabled: false });
     expect(response.status).toBe(401);
-    expect(await json(response)).toMatchObject({ error: "passkey_setup_required" });
+    expect(await json(response)).toMatchObject({ error: "authentication_required" });
   });
 
   test("browser push config is stable and subscriptions can be managed", async () => {

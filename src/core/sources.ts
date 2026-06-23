@@ -41,10 +41,11 @@ export function buildWebhookUrl(req: Request, sourceId: string, token: string): 
   return `${getRequestOrigin(req).origin}/api/webhooks/${sourceId}/${token}`;
 }
 
-export async function createSource(name: string, req: Request): Promise<CreatedSource> {
+export async function createSource(name: string, req: Request, userId = ""): Promise<CreatedSource> {
   const token = generateWebhookToken();
   const source: PersistedSource = {
     id: crypto.randomUUID(),
+    userId,
     name,
     tokenHash: await hashWebhookToken(token),
     createdAt: nowIso(),
@@ -53,7 +54,7 @@ export async function createSource(name: string, req: Request): Promise<CreatedS
   insertSource(source);
   const response = toSourceResponse(source);
   emit({ type: "source.created", source: response });
-  log.info("Source created", { sourceId: source.id, name: source.name });
+  log.info("Source created", { sourceId: source.id, userId, name: source.name });
   return {
     source: response,
     token,
@@ -61,16 +62,16 @@ export async function createSource(name: string, req: Request): Promise<CreatedS
   };
 }
 
-export function listSources(includeDisabled: boolean): SourceResponse[] {
-  return listPersistedSources(includeDisabled).map(toSourceResponse);
+export function listSources(includeDisabled: boolean, userId?: string): SourceResponse[] {
+  return listPersistedSources(includeDisabled, userId).map(toSourceResponse);
 }
 
 export function getSourceForWebhook(id: string): PersistedSource | undefined {
   return getSourceById(id);
 }
 
-export async function rotateSourceToken(id: string, req: Request): Promise<CreatedSource | undefined> {
-  const existing = getSourceById(id);
+export async function rotateSourceToken(id: string, req: Request, userId?: string): Promise<CreatedSource | undefined> {
+  const existing = getSourceById(id, userId);
   if (!existing) {
     log.warn("Source token rotation requested but source was not found", { sourceId: id });
     return undefined;
@@ -102,13 +103,13 @@ export function markSourceUsed(id: string, usedAt = nowIso()): SourceResponse | 
   return response;
 }
 
-export function deleteSourceAndNotifications(id: string): boolean {
-  const deleted = deleteSource(id);
+export function deleteSourceAndNotifications(id: string, userId?: string): boolean {
+  const deleted = deleteSource(id, userId);
   if (!deleted) {
     log.warn("Source delete requested but source was not found", { sourceId: id });
     return false;
   }
-  emit({ type: "notifications.deleted", sourceId: id, deletedCount: deleted.deletedNotificationCount, unreadCount: getUnreadNotificationCount() });
+  emit({ type: "notifications.deleted", sourceId: id, deletedCount: deleted.deletedNotificationCount, unreadCount: getUnreadNotificationCount(userId) });
   emit({ type: "source.deleted", sourceId: id });
   log.info("Source deleted", { sourceId: id, deletedNotificationCount: deleted.deletedNotificationCount });
   return true;
