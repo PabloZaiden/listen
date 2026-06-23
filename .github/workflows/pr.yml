@@ -21,7 +21,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run build
       - run: |
-          LISTEN_DISABLE_PASSKEY=true LISTEN_DISABLE_SAME_ORIGIN_CHECK=true LISTEN_PORT=3018 bun run dev &
+          LISTEN_DISABLE_PASSKEY=true LISTEN_DISABLE_SAME_ORIGIN_CHECK=true LISTEN_HOST=127.0.0.1 LISTEN_PORT=3018 bun run dev &
           PID=$!
           trap 'kill "$PID"' EXIT
           for i in $(seq 1 30); do

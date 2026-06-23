@@ -3,7 +3,6 @@ import { describe, expect, test } from "bun:test";
 import { WEBHOOK_JSON_BODY_MAX_BYTES } from "@listen/shared";
 import { createFetchHandler } from "../../src/server";
 import { readServerConfig, type ServerConfig } from "../../src/core/server-config";
-import { handleServerControl, scheduleServerShutdown } from "../../src/api/server-control";
 import { setBrowserPushSenderForTests } from "../../src/core/browser-push";
 import { createLogger, getLogLevel } from "../../src/core/logger";
 import { resetWebhookRateLimitForTests, setWebhookRateLimitOptionsForTests } from "../../src/core/webhook-rate-limit";
@@ -121,49 +120,6 @@ describe("API", () => {
     expect(response.status).toBe(401);
     expect(response.headers.get("x-webapp-passkey-required")).toBe("true");
     expect(await json(response)).toMatchObject({ error: "authentication_required" });
-  });
-
-  test("server kill route returns success before scheduling shutdown", async () => {
-    let shutdownRequested = false;
-    const response = handleServerControl(new Request("http://localhost/api/server/kill", { method: "POST" }), () => {
-      shutdownRequested = true;
-    });
-
-    expect(response?.status).toBe(200);
-    if (!response) {
-      throw new Error("Server kill route did not return a response");
-    }
-    expect(await json<{ success: boolean; message: string }>(response)).toEqual({
-      success: true,
-      message: "Server is shutting down. The connection will be lost.",
-    });
-    expect(shutdownRequested).toBe(true);
-  });
-
-  test("server kill route rejects unsupported methods", async () => {
-    let shutdownRequested = false;
-    const response = handleServerControl(new Request("http://localhost/api/server/kill"), () => {
-      shutdownRequested = true;
-    });
-
-    expect(response?.status).toBe(405);
-    if (!response) {
-      throw new Error("Server kill route did not return a response");
-    }
-    expect(await json<{ error: string }>(response)).toMatchObject({ error: "method_not_allowed" });
-    expect(shutdownRequested).toBe(false);
-  });
-
-  test("server shutdown scheduler delays intentional process exit", () => {
-    let scheduledDelay: number | undefined;
-    let scheduledCallback: (() => void) | undefined;
-    scheduleServerShutdown((callback, delayMs) => {
-      scheduledCallback = callback;
-      scheduledDelay = delayMs;
-    });
-
-    expect(scheduledDelay).toBe(100);
-    expect(scheduledCallback).toBeFunction();
   });
 
   test("passkey status reports setup state", async () => {

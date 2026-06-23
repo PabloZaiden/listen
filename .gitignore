@@ -1,9 +1,7 @@
 node_modules/
 .cache/
 
-apps/listen/dist/
-packages/*/dist/
+dist/
 
 data/
-apps/listen/data/
 *.log

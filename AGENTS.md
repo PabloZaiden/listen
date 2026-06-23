@@ -6,15 +6,15 @@ Use Bun only. Run `bun install` before development when dependencies are missing
 
 ## Project Overview
 
-Listen is a single-user notification inbox for coding agents. It has a Bun backend, React browser UI, SQLite persistence, passkey authentication, source-specific webhook ingestion, WebSocket realtime updates, and a single `listen` CLI/server binary.
+Listen is a multi-user notification inbox for coding agents. It has a Bun backend, React browser UI, SQLite persistence, framework passkey/API-key/device authentication, source-specific public webhook ingestion, framework realtime updates, and a single `listen` CLI/server binary.
 
 ## Authentication and Security
 
-All protected APIs must stay passkey-protected. The webhook endpoint is the only unauthenticated write endpoint. Never log webhook tokens, passkey material, cookies, auth headers, or raw credentials. Never store raw webhook tokens. Never trust `source` from webhook payloads.
+All protected app APIs must use framework auth. The webhook endpoint is the only app-owned unauthenticated write endpoint. Never log webhook tokens, passkey material, cookies, auth headers, bearer tokens, API keys, or raw credentials. Never store raw webhook tokens. Never trust `source` from webhook payloads.
 
 ## TypeScript
 
-Keep strict types. Prefer shared contracts from `packages/contracts` and shared limits from `packages/shared`. Use bracket notation for environment variables. All source code must be TypeScript; do not add JavaScript source files. Bun serves and executes TypeScript directly, including browser-facing entrypoints such as service workers.
+Keep strict types. Prefer shared contracts from `packages/contracts`, shared limits from `packages/shared`, and framework helpers from `@pablozaiden/webapp`. Use bracket notation for environment variables. All source code must be TypeScript; do not add JavaScript source files. Bun serves and executes TypeScript directly, including browser-facing entrypoints such as service workers.
 
 ## Naming Conventions
 
@@ -42,11 +42,11 @@ Follow the surrounding TypeScript style. Keep code readable and avoid unrelated 
 
 ## API Routes
 
-API routes must delegate mutations to core managers. API modules must not import persistence modules directly. Persistence must use parameterized SQL.
+App routes should be declared in `src/server.ts` with `defineRoutes` and delegate mutations to core managers. Route handlers must not import persistence modules directly. Persistence must use parameterized SQL.
 
 ## Bun Specifics
 
-Use Bun APIs and scripts. Do not add Node-only tooling. Use `bun:sqlite` for SQLite and `Bun.serve` for HTTP/WebSocket serving.
+Use Bun APIs and scripts. Do not add Node-only tooling. Use `bun:sqlite` for SQLite and `@pablozaiden/webapp` for HTTP/realtime serving.
 
 ## Testing
 
@@ -62,4 +62,4 @@ Do not use `INSERT OR REPLACE`. Do not interpolate untrusted values into SQL. Us
 
 ## Common Patterns
 
-Use API -> Core -> Persistence imports. Use shared zod schemas for validation. Use `@pablozaiden/installer` for update behavior. When in doubt, inspect `github.com/pablozaiden/clanky` and follow the closest pattern unless a current Listen requirement differs. WebSocket realtime updates should follow Clanky's `/api/ws`, connection tracking, cleanup, ping/pong, and frontend hook patterns.
+Use Route -> Core -> Persistence imports. Use shared zod schemas for validation. Use `@pablozaiden/installer` for update behavior. Use the framework shell/settings/title-bar action menu/realtime/auth primitives instead of rebuilding them in Listen. When in doubt, inspect `github.com/pablozaiden/clanky` and follow the closest pattern unless a current Listen requirement differs.

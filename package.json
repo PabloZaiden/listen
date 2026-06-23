@@ -1,23 +1,22 @@
 {
   "name": "@pablozaiden/listen",
-  "description": "Single-user passkey-protected notification inbox for agents and webhooks",
+  "description": "Passkey-protected multi-user notification inbox for agents and webhooks",
   "version": "0.0.0-development",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "LISTEN_DATA_DIR=data bun --hot src/index.ts serve",
+    "dev": "bun --hot src/index.ts serve",
     "start": "NODE_ENV=production bun src/index.ts serve",
     "build": "bun src/build.ts",
     "test": "bun scripts/run-tests.ts all",
     "seed:demo": "bun scripts/seed-demo-data.ts",
     "test:backend": "bun scripts/run-tests.ts backend",
     "test:frontend": "bun scripts/run-tests.ts frontend",
-    "tsc": "mkdir -p .cache/tsc && bunx tsc --noEmit --pretty false --incremental --tsBuildInfoFile .cache/tsc/build.tsbuildinfo",
-    "tsc:workspaces": "bun run tsc"
+    "tsc": "mkdir -p .cache/tsc && bunx tsc --noEmit --pretty false --incremental --tsBuildInfoFile .cache/tsc/build.tsbuildinfo"
   },
   "dependencies": {
     "@pablozaiden/installer": "latest",
-    "@pablozaiden/webapp": "0.2.2",
+    "@pablozaiden/webapp": "0.2.3",
     "@simplewebauthn/browser": "latest",
     "@simplewebauthn/server": "latest",
     "@tailwindcss/typography": "latest",

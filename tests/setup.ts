@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { afterEach, beforeEach } from "bun:test";
 import { closeDatabaseForTests, initializeDatabase } from "../src/persistence/database";
 import { resetEventEmitterForTests } from "../src/core/event-emitter";
-import { resetConnectionsForTests } from "../src/api/websocket/connection";
 import { setBrowserPushSenderForTests } from "../src/core/browser-push";
 import { setLogLevel } from "../src/core/logger";
 import { resetWebhookRateLimitForTests } from "../src/core/webhook-rate-limit";
@@ -26,7 +25,6 @@ beforeEach(() => {
 
 afterEach(() => {
   resetWebhookRateLimitForTests();
-  resetConnectionsForTests();
   resetEventEmitterForTests();
   setBrowserPushSenderForTests();
   setLogLevel(DEFAULT_LOG_LEVEL);

@@ -1,6 +1,6 @@
 # Listen
 
-Listen is a single-user, passkey-protected notification inbox for coding agents and automation tools. It runs as one `listen` binary that serves the web UI and provides CLI commands for agents to send notifications through source-specific webhook URLs.
+Listen is a passkey-protected, multi-user notification inbox for coding agents and automation tools. It runs as one `listen` binary that serves the web UI and provides CLI commands for agents to send notifications through source-specific webhook URLs.
 
 ## Installation
 
@@ -14,7 +14,7 @@ curl -fsSL https://raw.githubusercontent.com/pablozaiden/installer/main/install.
 listen serve
 ```
 
-Open the server in a browser, set up the first passkey, create a webhook source, and copy the generated URL immediately. Webhook URLs are only shown on source creation and token rotation.
+Open the server in a browser, create the owner user/passkey, create a webhook source, and copy the generated URL immediately. Webhook URLs are only shown on source creation and token rotation.
 
 ## Running the server
 
