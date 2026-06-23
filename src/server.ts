@@ -6,7 +6,6 @@ import webManifest from "./web/manifest.webmanifest" with { type: "text" };
 import listenIcon192Path from "./web/icons/listen-192.png" with { type: "file" };
 import listenIcon512Path from "./web/icons/listen-512.png" with { type: "file" };
 import appleTouchIconPath from "./web/icons/apple-touch-icon.png" with { type: "file" };
-import { Database } from "bun:sqlite";
 import { createWebAppServer, defineRoutes, errorResponse, jsonResponse, parseJson, sqliteWebAppStore, successResponse, type ResourceRealtimeEvent, type RouteContext, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import type { BrowserPushSubscription, WebhookNotificationRequest } from "@listen/contracts";
@@ -18,7 +17,7 @@ import { verifyWebhookToken } from "./core/webhook-tokens";
 import { createNotificationFromWebhook, deleteNotification, deleteNotifications, listNotifications, markNotificationRead, markNotificationUnread, markNotificationsRead, openNotification } from "./core/notifications";
 import { createSource, deleteSourceAndNotifications, getSourceForWebhook, listSources, markSourceUsed, rotateSourceToken } from "./core/sources";
 import { getBrowserPushConfig, getBrowserPushSubscriptionStatus, subscribeBrowserPush, unsubscribeBrowserPush } from "./core/browser-push";
-import { initializeDatabase, getDatabase } from "./persistence/database";
+import { initializeDatabase } from "./persistence/database";
 import { readServerConfig, type ServerConfig } from "./core/server-config";
 import { LISTEN_VERSION } from "./version";
 import { checkGlobalWebhookRateLimit, checkSourceWebhookRateLimit, type WebhookRateLimitDecision } from "./core/webhook-rate-limit";
@@ -121,82 +120,6 @@ function requireListenUser(ctx: RouteContext<Record<string, string>, ListenRealt
     return ensureAdminOwner(appServer);
   }
   return ctx.requireUser();
-}
-
-function legacyPasskeyExists(db: Database): boolean {
-  const row = db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'passkey_credentials'").get();
-  if (!row) return false;
-  const count = db.query("SELECT COUNT(*) AS count FROM passkey_credentials").get() as { count: number };
-  return count.count > 0;
-}
-
-function parseLegacyPasskeyTransports(value: string, credentialId: string): string[] {
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string")) {
-      return parsed;
-    }
-  } catch {
-    // Fall through to the warning below.
-  }
-  log.warn("Ignoring malformed legacy passkey transports", { credentialId });
-  return [];
-}
-
-function migrateLegacyListenData(db: Database, app: WebAppServer<ListenRealtimeEvent>): void {
-  // Temporary one-time migration for pre-framework Listen data; remove after the migration window closes.
-  app.store.initialize();
-  let owner = app.store.getOwnerUser() ?? app.store.getUserByUsername("admin");
-  if (!owner && legacyPasskeyExists(db)) {
-    owner = createOwnerRecord("admin");
-    app.store.createUser(owner);
-    log.info("Created admin owner for legacy Listen data migration", { userId: owner.id });
-  }
-  if (!owner) {
-    return;
-  }
-
-  db.query("UPDATE webhook_sources SET user_id = $userId WHERE user_id IS NULL OR user_id = ''").run({ userId: owner.id });
-  db.query("UPDATE notifications SET user_id = $userId WHERE user_id IS NULL OR user_id = ''").run({ userId: owner.id });
-  db.query("UPDATE browser_push_subscriptions SET user_id = $userId WHERE user_id IS NULL OR user_id = ''").run({ userId: owner.id });
-
-  if (!app.store.getPasskeyByUserId(owner.id)) {
-    const row = db.query(`
-      SELECT id, name, credential_id, public_key, counter, device_type, backed_up, transports, created_at, updated_at, last_used_at
-      FROM passkey_credentials
-      ORDER BY created_at ASC
-      LIMIT 1
-    `).get() as {
-      id: string;
-      name: string;
-      credential_id: string;
-      public_key: Uint8Array<ArrayBuffer>;
-      counter: number;
-      device_type: string;
-      backed_up: number;
-      transports: string;
-      created_at: string;
-      updated_at: string;
-      last_used_at: string | null;
-    } | null;
-    if (row) {
-      app.store.savePasskey({
-        id: row.id,
-        userId: owner.id,
-        name: row.name,
-        credentialId: row.credential_id,
-        publicKey: row.public_key,
-        counter: row.counter,
-        deviceType: row.device_type,
-        backedUp: row.backed_up === 1,
-        transports: parseLegacyPasskeyTransports(row.transports, row.credential_id),
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        lastUsedAt: row.last_used_at ?? undefined,
-      });
-      log.info("Migrated legacy Listen passkey into framework store", { userId: owner.id });
-    }
-  }
 }
 
 const routes = defineRoutes<ListenRealtimeEvent>({
@@ -424,7 +347,6 @@ export function getWebAppServer(): WebAppServer<ListenRealtimeEvent> {
       "/icons/apple-touch-icon.png": { GET: () => iconResponse("/icons/apple-touch-icon.png") },
     },
   });
-  migrateLegacyListenData(getDatabase(), app);
   return app;
 }
 
