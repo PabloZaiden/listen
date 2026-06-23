@@ -2,7 +2,7 @@ FROM oven/bun:1 AS builder
 WORKDIR /app
 COPY . .
 RUN bun install --frozen-lockfile
-RUN bun run build
+RUN bun src/build.ts
 
 FROM debian:bookworm-slim
 WORKDIR /app
@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     tini \
   && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /app/apps/listen/dist/listen /app/listen
+COPY --from=builder /app/dist/listen /app/listen
 RUN groupadd --system listen && \
     useradd --system --gid listen --no-create-home listen
 RUN mkdir -p /app/data && chown -R listen:listen /app/data

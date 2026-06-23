@@ -1,9 +1,8 @@
 import "./../setup";
 import { describe, expect, test } from "bun:test";
-import { WEBHOOK_JSON_BODY_MAX_BYTES } from "@listen/shared";
+import { BROWSER_PUSH_ENDPOINT_MAX_CHARS, WEBHOOK_JSON_BODY_MAX_BYTES } from "@listen/shared";
 import { createFetchHandler } from "../../src/server";
 import { readServerConfig, type ServerConfig } from "../../src/core/server-config";
-import { handleServerControl, scheduleServerShutdown } from "../../src/api/server-control";
 import { setBrowserPushSenderForTests } from "../../src/core/browser-push";
 import { createLogger, getLogLevel } from "../../src/core/logger";
 import { resetWebhookRateLimitForTests, setWebhookRateLimitOptionsForTests } from "../../src/core/webhook-rate-limit";
@@ -106,64 +105,21 @@ describe("API", () => {
     const response = await request("/api/health");
     expect(response.status).toBe(200);
     expectSecurityHeaders(response);
-    expect(await json<{ ok: boolean }>(response)).toEqual({ ok: true });
+    expect(await json<{ ok: boolean }>(response)).toMatchObject({ ok: true });
   });
 
   test("protected routes reject when passkey is required and no passkey is configured", async () => {
     const response = await request("/api/sources", undefined, { passkeyDisabled: false });
     expect(response.status).toBe(401);
-    expect(response.headers.get("x-passkey-auth-required")).toBe("true");
-    expect(await json(response)).toMatchObject({ error: "passkey_setup_required" });
+    expect(response.headers.get("x-webapp-passkey-required")).toBe("true");
+    expect(await json(response)).toMatchObject({ error: "authentication_required" });
   });
 
   test("server kill route rejects when passkey is required and no passkey is configured", async () => {
     const response = await request("/api/server/kill", { method: "POST" }, { passkeyDisabled: false });
     expect(response.status).toBe(401);
-    expect(response.headers.get("x-passkey-auth-required")).toBe("true");
-    expect(await json(response)).toMatchObject({ error: "passkey_setup_required" });
-  });
-
-  test("server kill route returns success before scheduling shutdown", async () => {
-    let shutdownRequested = false;
-    const response = handleServerControl(new Request("http://localhost/api/server/kill", { method: "POST" }), () => {
-      shutdownRequested = true;
-    });
-
-    expect(response?.status).toBe(200);
-    if (!response) {
-      throw new Error("Server kill route did not return a response");
-    }
-    expect(await json<{ success: boolean; message: string }>(response)).toEqual({
-      success: true,
-      message: "Server is shutting down. The connection will be lost.",
-    });
-    expect(shutdownRequested).toBe(true);
-  });
-
-  test("server kill route rejects unsupported methods", async () => {
-    let shutdownRequested = false;
-    const response = handleServerControl(new Request("http://localhost/api/server/kill"), () => {
-      shutdownRequested = true;
-    });
-
-    expect(response?.status).toBe(405);
-    if (!response) {
-      throw new Error("Server kill route did not return a response");
-    }
-    expect(await json<{ error: string }>(response)).toMatchObject({ error: "method_not_allowed" });
-    expect(shutdownRequested).toBe(false);
-  });
-
-  test("server shutdown scheduler delays intentional process exit", () => {
-    let scheduledDelay: number | undefined;
-    let scheduledCallback: (() => void) | undefined;
-    scheduleServerShutdown((callback, delayMs) => {
-      scheduledCallback = callback;
-      scheduledDelay = delayMs;
-    });
-
-    expect(scheduledDelay).toBe(100);
-    expect(scheduledCallback).toBeFunction();
+    expect(response.headers.get("x-webapp-passkey-required")).toBe("true");
+    expect(await json(response)).toMatchObject({ error: "authentication_required" });
   });
 
   test("passkey status reports setup state", async () => {
@@ -171,17 +127,43 @@ describe("API", () => {
     expect(await json(response)).toMatchObject({
       passkeyConfigured: false,
       passkeyDisabled: false,
-      passkeyRequired: true,
+      bootstrapRequired: true,
+      passkeyRequired: false,
       authenticated: false,
     });
   });
 
+  test("legacy passkey migration ignores malformed transports", async () => {
+    const timestamp = new Date().toISOString();
+    getDatabase().query(`
+      INSERT INTO passkey_credentials (
+        id, name, credential_id, public_key, counter, device_type, backed_up, transports, created_at, updated_at
+      )
+      VALUES (
+        $id, $name, $credentialId, $publicKey, $counter, $deviceType, $backedUp, $transports, $createdAt, $updatedAt
+      )
+    `).run({
+      id: "legacy-passkey",
+      name: "Legacy passkey",
+      credentialId: "legacy-credential",
+      publicKey: new Uint8Array([1, 2, 3]),
+      counter: 0,
+      deviceType: "singleDevice",
+      backedUp: 0,
+      transports: "not-json",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+
+    const response = await request("/api/health", undefined, { passkeyDisabled: false });
+
+    expect(response.status).toBe(200);
+  });
+
   test("log level preference can be changed at runtime", async () => {
-    const initial = await json<{ level: string; defaultLevel: string; availableLevels: string[]; isFromEnv: boolean }>(await request("/api/preferences/log-level"));
+    const initial = await json<{ level: string; fromEnv: boolean }>(await request("/api/preferences/log-level"));
     expect(initial.level).toBe("info");
-    expect(initial.defaultLevel).toBe("info");
-    expect(initial.availableLevels).toContain("trace");
-    expect(initial.isFromEnv).toBe(false);
+    expect(initial.fromEnv).toBe(false);
 
     const update = await request("/api/preferences/log-level", {
       method: "PUT",
@@ -203,7 +185,14 @@ describe("API", () => {
       body: JSON.stringify({ level: "verbose" }),
     });
     expect(response.status).toBe(400);
-    expect(await json(response)).toMatchObject({ error: "validation_failed" });
+    expect(await json(response)).toMatchObject({ error: "invalid_log_level" });
+  });
+
+  test("fetch handler applies explicit log level config", async () => {
+    const response = await request("/api/config", undefined, { logLevel: "debug" });
+
+    expect(response.status).toBe(200);
+    expect(await json<{ logLevel: { level: string; fromEnv: boolean } }>(response)).toMatchObject({ logLevel: { level: "debug", fromEnv: true } });
   });
 
   test("source creation returns webhook URL only from create and list omits it", async () => {
@@ -550,7 +539,7 @@ describe("API", () => {
   test("browser push routes are protected", async () => {
     const response = await request("/api/browser-push/config", undefined, { passkeyDisabled: false });
     expect(response.status).toBe(401);
-    expect(await json(response)).toMatchObject({ error: "passkey_setup_required" });
+    expect(await json(response)).toMatchObject({ error: "authentication_required" });
   });
 
   test("browser push config is stable and subscriptions can be managed", async () => {
@@ -588,6 +577,17 @@ describe("API", () => {
       body: JSON.stringify({ endpoint }),
     });
     expect(await json<{ subscribed: boolean }>(lookupAfterDelete)).toEqual({ subscribed: false });
+  });
+
+  test("browser push subscription rejects oversized endpoints", async () => {
+    const response = await request("/api/browser-push/subscriptions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ subscription: browserPushSubscription(`https://push.example.test/${"x".repeat(BROWSER_PUSH_ENDPOINT_MAX_CHARS)}`) }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await json(response)).toMatchObject({ error: "invalid_request" });
   });
 
   test("webhook fanout sends compact browser push payloads to subscribed browsers", async () => {

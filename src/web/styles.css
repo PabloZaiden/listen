@@ -986,6 +986,85 @@ code {
   transition: width 1s linear;
 }
 
+.listen-stack {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.listen-secret {
+  margin-bottom: 1rem;
+}
+
+.listen-notification-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.listen-notification-title > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listen-unread-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+}
+
+.listen-notification-title.unread .listen-unread-dot {
+  background: #3b82f6;
+}
+
+.listen-secret-copy {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.listen-secret-text {
+  display: grid;
+  min-width: 0;
+  gap: 0.375rem;
+}
+
+.listen-secret code {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--wapp-text);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.listen-secret .wapp-button {
+  flex: 0 0 auto;
+}
+
+.listen-source-create {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.75rem;
+}
+
+.listen-source-create .wapp-button {
+  min-height: 2.375rem;
+  margin-top: calc(0.8125rem * 1.45 + 0.375rem);
+  white-space: nowrap;
+}
+
+.listen-source-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .version-legend {
   margin-top: auto;
   color: var(--text-muted);
@@ -1109,6 +1188,27 @@ code {
   .row-actions,
   .settings-card-actions {
     justify-content: flex-end;
+  }
+}
+
+@media (max-width: 640px) {
+  .listen-secret-copy {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .listen-secret .wapp-button,
+  .listen-source-create .wapp-button {
+    justify-self: start;
+    align-self: start;
+  }
+
+  .listen-source-create {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .listen-source-create .wapp-button {
+    margin-top: 0;
   }
 }
 

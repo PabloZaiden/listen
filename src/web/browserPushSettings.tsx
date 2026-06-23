@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import type { BrowserPushConfigResponse, BrowserPushStatusResponse, BrowserPushSubscription } from "@listen/contracts";
-import { appFetch } from "@listen/client-sdk";
-import { Button } from "./ui/Button";
+import { appFetch, Button } from "@pablozaiden/webapp/web";
 
 type BrowserPushUiState = "loading" | "unsupported" | "denied" | "unsubscribed" | "subscribed" | "error";
 
@@ -252,7 +251,7 @@ export function BrowserPushSettings({ onEnabled, onDisabled }: { onEnabled?: () 
     <section className={`settings-card browser-push-settings ${state.status === "error" ? "browser-push-settings-error" : ""}`} aria-live="polite">
       <div>
         <div className="settings-card-title-row">
-          <h3>Browser notifications</h3>
+          <h3>This browser</h3>
         </div>
         {state.message ? (
           <div className="browser-push-error">

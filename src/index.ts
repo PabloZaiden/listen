@@ -1,4 +1,4 @@
-import { runMain } from "../../../src/entrypoint";
+import { runMain } from "./entrypoint";
 
 try {
   const exitCode = await runMain(Bun.argv.slice(2));
@@ -6,6 +6,7 @@ try {
     process.exit(exitCode);
   }
 } catch (error) {
-  console.error(`Fatal error during startup: ${error instanceof Error ? error.message : String(error)}`);
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`Fatal: ${message}`);
   process.exit(1);
 }

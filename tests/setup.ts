@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { afterEach, beforeEach } from "bun:test";
 import { closeDatabaseForTests, initializeDatabase } from "../src/persistence/database";
 import { resetEventEmitterForTests } from "../src/core/event-emitter";
-import { resetConnectionsForTests } from "../src/api/websocket/connection";
 import { setBrowserPushSenderForTests } from "../src/core/browser-push";
 import { setLogLevel } from "../src/core/logger";
 import { resetWebhookRateLimitForTests } from "../src/core/webhook-rate-limit";
@@ -20,18 +19,19 @@ beforeEach(() => {
   process.env["HOME"] = homeDir;
   process.env["LISTEN_DISABLE_PASSKEY"] = "true";
   process.env["LISTEN_DISABLE_SAME_ORIGIN_CHECK"] = "true";
+  delete process.env["LISTEN_LOG_LEVEL"];
   resetWebhookRateLimitForTests();
   initializeDatabase(dataDir);
 });
 
 afterEach(() => {
   resetWebhookRateLimitForTests();
-  resetConnectionsForTests();
   resetEventEmitterForTests();
   setBrowserPushSenderForTests();
   setLogLevel(DEFAULT_LOG_LEVEL);
   closeDatabaseForTests();
   delete process.env["LISTEN_WEBHOOK_URL"];
+  delete process.env["LISTEN_LOG_LEVEL"];
   rmSync(dataDir, { recursive: true, force: true });
   rmSync(homeDir, { recursive: true, force: true });
 });

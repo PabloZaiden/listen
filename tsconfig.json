@@ -19,7 +19,6 @@
     "noUncheckedIndexedAccess": true,
     "paths": {
       "@listen/contracts": ["packages/contracts/src/index.ts"],
-      "@listen/client-sdk": ["packages/client-sdk/src/index.ts"],
       "@listen/shared": ["packages/shared/src/index.ts"]
     },
     "resolveJsonModule": true,
@@ -29,7 +28,6 @@
     "types": ["bun"]
   },
   "include": [
-    "apps/**/*.ts",
     "packages/**/*.ts",
     "src/**/*.ts",
     "src/**/*.tsx",

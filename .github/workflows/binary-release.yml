@@ -16,7 +16,7 @@ jobs:
           {
             "name": "listen",
             "asset_prefix": "listen",
-            "build_command": "bun --cwd apps/listen src/build.ts --target=$BUN_TARGET",
-            "output_path": "apps/listen/dist/listen-$RELEASE_TARGET"
+            "build_command": "bun src/build.ts --target=$BUN_TARGET",
+            "output_path": "dist/listen-$RELEASE_TARGET"
           }
         ]
