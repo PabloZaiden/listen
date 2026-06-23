@@ -1,4 +1,6 @@
 import "./../setup";
+import { rmSync } from "node:fs";
+import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { BROWSER_PUSH_ENDPOINT_MAX_CHARS, WEBHOOK_JSON_BODY_MAX_BYTES } from "@listen/shared";
 import { createFetchHandler } from "../../src/server";
@@ -7,7 +9,7 @@ import { setBrowserPushSenderForTests } from "../../src/core/browser-push";
 import { createLogger, getLogLevel } from "../../src/core/logger";
 import { resetWebhookRateLimitForTests, setWebhookRateLimitOptionsForTests } from "../../src/core/webhook-rate-limit";
 import { getBrowserPushSubscriptionByEndpoint } from "../../src/persistence/browser-push";
-import { getDatabase } from "../../src/persistence/database";
+import { closeDatabaseForTests, getDatabase, getDatabasePath, initializeDatabase } from "../../src/persistence/database";
 
 async function request(path: string, init?: RequestInit, config?: Partial<ServerConfig>): Promise<Response> {
   const handler = createFetchHandler({ ...readServerConfig(), passkeyDisabled: true, sameOriginCheckDisabled: true, ...config });
@@ -98,6 +100,10 @@ async function waitForExpectation(assertion: () => void, timeoutMs = 1_000): Pro
   if (lastError) {
     throw lastError;
   }
+}
+
+function columnNames(table: string): Set<string> {
+  return new Set((getDatabase().query(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((row) => row.name));
 }
 
 describe("API", () => {
@@ -401,6 +407,70 @@ describe("API", () => {
 
     const list = await json<{ notifications: unknown[] }>(await request(`/api/notifications?sourceId=${created.source.id}`));
     expect(list.notifications).toHaveLength(0);
+  });
+
+  test("database initialization upgrades legacy tables before user indexes", () => {
+    closeDatabaseForTests();
+    rmSync(getDatabasePath(), { force: true });
+    const legacy = new Database(getDatabasePath(), { create: true, strict: true });
+    try {
+      legacy.exec(`
+        CREATE TABLE preferences (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        );
+
+        CREATE TABLE webhook_sources (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          token_hash TEXT NOT NULL UNIQUE,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          last_used_at TEXT,
+          disabled_at TEXT
+        );
+
+        CREATE TABLE notifications (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          short_description TEXT NOT NULL,
+          markdown_content TEXT NOT NULL,
+          source_id TEXT,
+          source TEXT NOT NULL,
+          icon_data_url TEXT,
+          created_at TEXT NOT NULL,
+          opened_at TEXT,
+          FOREIGN KEY (source_id) REFERENCES webhook_sources(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE browser_push_subscriptions (
+          id TEXT PRIMARY KEY,
+          endpoint TEXT NOT NULL UNIQUE,
+          p256dh TEXT NOT NULL,
+          auth TEXT NOT NULL,
+          expiration_time INTEGER,
+          user_agent TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          last_success_at TEXT,
+          last_failure_at TEXT,
+          failure_count INTEGER NOT NULL DEFAULT 0,
+          next_attempt_at TEXT,
+          disabled_at TEXT
+        );
+      `);
+    } finally {
+      legacy.close();
+    }
+
+    expect(() => initializeDatabase(process.env["LISTEN_DATA_DIR"])).not.toThrow();
+    expect(columnNames("webhook_sources").has("user_id")).toBe(true);
+    expect(columnNames("notifications").has("user_id")).toBe(true);
+    expect(columnNames("browser_push_subscriptions").has("user_id")).toBe(true);
+    const notificationUserIndex = getDatabase().query("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_notifications_user_created_at'").get();
+    const browserPushUserIndex = getDatabase().query("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_browser_push_user_active_next_attempt'").get();
+    expect(notificationUserIndex).toBeTruthy();
+    expect(browserPushUserIndex).toBeTruthy();
   });
 
   test("notification detail marks opened and deletes work", async () => {
