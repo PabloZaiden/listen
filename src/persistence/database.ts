@@ -1,7 +1,6 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { runMigrations } from "./migrations";
 
 let database: Database | undefined;
 let databasePath: string | undefined;
@@ -27,23 +26,9 @@ export function initializeDatabase(dataDir = process.env["LISTEN_DATA_DIR"] ?? "
       value TEXT NOT NULL
     );
 
-    CREATE TABLE IF NOT EXISTS passkey_credentials (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      credential_id TEXT NOT NULL UNIQUE,
-      public_key BLOB NOT NULL,
-      counter INTEGER NOT NULL,
-      device_type TEXT NOT NULL,
-      backed_up INTEGER NOT NULL,
-      transports TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      last_used_at TEXT
-    );
-
     CREATE TABLE IF NOT EXISTS webhook_sources (
       id TEXT PRIMARY KEY,
-      user_id TEXT,
+      user_id TEXT NOT NULL,
       name TEXT NOT NULL,
       token_hash TEXT NOT NULL UNIQUE,
       created_at TEXT NOT NULL,
@@ -54,7 +39,7 @@ export function initializeDatabase(dataDir = process.env["LISTEN_DATA_DIR"] ?? "
 
     CREATE TABLE IF NOT EXISTS notifications (
       id TEXT PRIMARY KEY,
-      user_id TEXT,
+      user_id TEXT NOT NULL,
       title TEXT NOT NULL,
       short_description TEXT NOT NULL,
       markdown_content TEXT NOT NULL,
@@ -68,7 +53,7 @@ export function initializeDatabase(dataDir = process.env["LISTEN_DATA_DIR"] ?? "
 
     CREATE TABLE IF NOT EXISTS browser_push_subscriptions (
       id TEXT PRIMARY KEY,
-      user_id TEXT,
+      user_id TEXT NOT NULL,
       endpoint TEXT NOT NULL UNIQUE,
       p256dh TEXT NOT NULL,
       auth TEXT NOT NULL,
@@ -86,6 +71,9 @@ export function initializeDatabase(dataDir = process.env["LISTEN_DATA_DIR"] ?? "
     CREATE INDEX IF NOT EXISTS idx_notifications_created_at
     ON notifications(created_at DESC, id DESC);
 
+    CREATE INDEX IF NOT EXISTS idx_notifications_user_created_at
+    ON notifications(user_id, created_at DESC, id DESC);
+
     CREATE INDEX IF NOT EXISTS idx_notifications_source_created_at
     ON notifications(source_id, created_at DESC, id DESC);
 
@@ -94,9 +82,10 @@ export function initializeDatabase(dataDir = process.env["LISTEN_DATA_DIR"] ?? "
 
     CREATE INDEX IF NOT EXISTS idx_browser_push_active_next_attempt
     ON browser_push_subscriptions(disabled_at, next_attempt_at);
+
+    CREATE INDEX IF NOT EXISTS idx_browser_push_user_active_next_attempt
+    ON browser_push_subscriptions(user_id, disabled_at, next_attempt_at);
   `);
-  runMigrations(database);
-  ensureUserIdColumns(database);
   return database;
 }
 
@@ -111,28 +100,4 @@ export function closeDatabaseForTests(): void {
   database?.close();
   database = undefined;
   databasePath = undefined;
-}
-
-function tableColumns(db: Database, table: string): Set<string> {
-  return new Set((db.query(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((row) => row.name));
-}
-
-function addColumnIfMissing(db: Database, table: string, column: string, definition: string): void {
-  if (!tableColumns(db, table).has(column)) {
-    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
-  }
-}
-
-function ensureUserIdColumns(db: Database): void {
-  // Temporary one-time migration for pre-framework Listen databases; remove after the migration window closes.
-  addColumnIfMissing(db, "webhook_sources", "user_id", "TEXT");
-  addColumnIfMissing(db, "notifications", "user_id", "TEXT");
-  addColumnIfMissing(db, "browser_push_subscriptions", "user_id", "TEXT");
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_notifications_user_created_at
-    ON notifications(user_id, created_at DESC, id DESC);
-
-    CREATE INDEX IF NOT EXISTS idx_browser_push_user_active_next_attempt
-    ON browser_push_subscriptions(user_id, disabled_at, next_attempt_at);
-  `);
 }
