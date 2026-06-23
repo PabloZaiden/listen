@@ -19,6 +19,7 @@ beforeEach(() => {
   process.env["HOME"] = homeDir;
   process.env["LISTEN_DISABLE_PASSKEY"] = "true";
   process.env["LISTEN_DISABLE_SAME_ORIGIN_CHECK"] = "true";
+  delete process.env["LISTEN_LOG_LEVEL"];
   resetWebhookRateLimitForTests();
   initializeDatabase(dataDir);
 });
@@ -30,6 +31,7 @@ afterEach(() => {
   setLogLevel(DEFAULT_LOG_LEVEL);
   closeDatabaseForTests();
   delete process.env["LISTEN_WEBHOOK_URL"];
+  delete process.env["LISTEN_LOG_LEVEL"];
   rmSync(dataDir, { recursive: true, force: true });
   rmSync(homeDir, { recursive: true, force: true });
 });

@@ -11,7 +11,7 @@ import { createWebAppServer, defineRoutes, errorResponse, jsonResponse, parseJso
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import type { BrowserPushSubscription, WebhookNotificationRequest } from "@listen/contracts";
 import { webhookNotificationRequestSchema } from "@listen/contracts";
-import { BROWSER_PUSH_ENDPOINT_MAX_CHARS, NOTIFICATION_SOURCE_NAME_MAX_CHARS } from "@listen/shared";
+import { BROWSER_PUSH_ENDPOINT_MAX_CHARS, isLogLevelName, NOTIFICATION_SOURCE_NAME_MAX_CHARS } from "@listen/shared";
 import { createLogger, setLogLevel } from "./core/logger";
 import { getRequestOrigin } from "./core/request-origin";
 import { verifyWebhookToken } from "./core/webhook-tokens";
@@ -130,6 +130,19 @@ function legacyPasskeyExists(db: Database): boolean {
   return count.count > 0;
 }
 
+function parseLegacyPasskeyTransports(value: string, credentialId: string): string[] {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string")) {
+      return parsed;
+    }
+  } catch {
+    // Fall through to the warning below.
+  }
+  log.warn("Ignoring malformed legacy passkey transports", { credentialId });
+  return [];
+}
+
 function migrateLegacyListenData(db: Database, app: WebAppServer<ListenRealtimeEvent>): void {
   app.store.initialize();
   let owner = app.store.getOwnerUser() ?? app.store.getUserByUsername("admin");
@@ -175,7 +188,7 @@ function migrateLegacyListenData(db: Database, app: WebAppServer<ListenRealtimeE
         counter: row.counter,
         deviceType: row.device_type,
         backedUp: row.backed_up === 1,
-        transports: JSON.parse(row.transports) as string[],
+        transports: parseLegacyPasskeyTransports(row.transports, row.credential_id),
         createdAt: row.created_at,
         updatedAt: row.updated_at,
         lastUsedAt: row.last_used_at ?? undefined,
@@ -317,7 +330,9 @@ const routes = defineRoutes<ListenRealtimeEvent>({
       const user = requireListenUser(ctx);
       const body = await parseJson<{ subscription?: BrowserPushSubscription }>(req);
       if (!body.subscription) return badRequest("subscription is required.");
-      return jsonResponse(subscribeBrowserPush(body.subscription, req, user.id), { status: 201 });
+      const endpoint = body.subscription.endpoint.trim();
+      if (!endpoint || endpoint.length > BROWSER_PUSH_ENDPOINT_MAX_CHARS) return badRequest("Valid endpoint is required.");
+      return jsonResponse(subscribeBrowserPush({ ...body.subscription, endpoint }, req, user.id), { status: 201 });
     },
     async DELETE(req, ctx) {
       const user = requireListenUser(ctx);
@@ -416,8 +431,11 @@ export function createFetchHandler(_config: ServerConfig = readServerConfig()): 
   process.env["LISTEN_HOST"] = _config.host;
   process.env["LISTEN_PORT"] = String(_config.port);
   process.env["LISTEN_DATA_DIR"] = _config.dataDir;
-  if (process.env["LISTEN_LOG_LEVEL"] !== undefined) {
+  if (_config.logLevel !== "info" || process.env["LISTEN_LOG_LEVEL"] !== undefined) {
     process.env["LISTEN_LOG_LEVEL"] = _config.logLevel;
+  }
+  if (isLogLevelName(_config.logLevel)) {
+    setLogLevel(_config.logLevel);
   }
   process.env["LISTEN_DISABLE_PASSKEY"] = _config.passkeyDisabled ? "true" : "false";
   process.env["LISTEN_DISABLE_SAME_ORIGIN_CHECK"] = _config.sameOriginCheckDisabled ? "true" : "false";

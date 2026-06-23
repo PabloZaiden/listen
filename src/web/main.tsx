@@ -138,7 +138,7 @@ function useNotifications(sourceId?: string): [ListNotificationsResponse | undef
     if (sourceId) params.set("sourceId", sourceId);
     setResult(await api<ListNotificationsResponse>(`/api/notifications?${params}`));
   }, [sourceId]);
-  useEffect(() => void refresh(), [refresh]);
+  useEffect(() => void refresh().catch((error) => console.error("Could not load notifications", error)), [refresh]);
   return [result, refresh];
 }
 
@@ -186,15 +186,24 @@ function NotificationView({ route }: { route: WebAppRoute }) {
   const [detail, setDetail] = useState<NotificationDetail>();
   const [error, setError] = useState<string>();
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (signal?: AbortSignal) => {
     if (!id) return;
-    const response = await api<{ notification: NotificationDetail }>(`/api/notifications/${encodeURIComponent(id)}`);
+    const response = await api<{ notification: NotificationDetail }>(`/api/notifications/${encodeURIComponent(id)}`, { signal });
+    if (signal?.aborted) return;
     setDetail(response.notification);
     setError(undefined);
   }, [id]);
 
   useEffect(() => {
-    void refresh().catch((err) => setError(err instanceof Error ? err.message : String(err)));
+    const controller = new AbortController();
+    setDetail(undefined);
+    setError(undefined);
+    void refresh(controller.signal).catch((err) => {
+      if (!controller.signal.aborted) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    });
+    return () => controller.abort();
   }, [refresh]);
 
   if (error) return <EmptyState title="Notification not found" description={error} />;
@@ -241,7 +250,12 @@ function SourcesView({ sources, refreshSources, requestConfirm }: { sources: Sou
   const [error, setError] = useState<string>();
 
   async function copyWebhook(url: string): Promise<void> {
-    await navigator.clipboard.writeText(url);
+    try {
+      await navigator.clipboard.writeText(url);
+      setError(undefined);
+    } catch {
+      setError("Could not copy the webhook URL. Copy it manually from the text above.");
+    }
   }
 
   async function create(): Promise<void> {

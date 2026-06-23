@@ -1,6 +1,6 @@
 import "./../setup";
 import { describe, expect, test } from "bun:test";
-import { WEBHOOK_JSON_BODY_MAX_BYTES } from "@listen/shared";
+import { BROWSER_PUSH_ENDPOINT_MAX_CHARS, WEBHOOK_JSON_BODY_MAX_BYTES } from "@listen/shared";
 import { createFetchHandler } from "../../src/server";
 import { readServerConfig, type ServerConfig } from "../../src/core/server-config";
 import { setBrowserPushSenderForTests } from "../../src/core/browser-push";
@@ -133,6 +133,33 @@ describe("API", () => {
     });
   });
 
+  test("legacy passkey migration ignores malformed transports", async () => {
+    const timestamp = new Date().toISOString();
+    getDatabase().query(`
+      INSERT INTO passkey_credentials (
+        id, name, credential_id, public_key, counter, device_type, backed_up, transports, created_at, updated_at
+      )
+      VALUES (
+        $id, $name, $credentialId, $publicKey, $counter, $deviceType, $backedUp, $transports, $createdAt, $updatedAt
+      )
+    `).run({
+      id: "legacy-passkey",
+      name: "Legacy passkey",
+      credentialId: "legacy-credential",
+      publicKey: new Uint8Array([1, 2, 3]),
+      counter: 0,
+      deviceType: "singleDevice",
+      backedUp: 0,
+      transports: "not-json",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+
+    const response = await request("/api/health", undefined, { passkeyDisabled: false });
+
+    expect(response.status).toBe(200);
+  });
+
   test("log level preference can be changed at runtime", async () => {
     const initial = await json<{ level: string; fromEnv: boolean }>(await request("/api/preferences/log-level"));
     expect(initial.level).toBe("info");
@@ -159,6 +186,13 @@ describe("API", () => {
     });
     expect(response.status).toBe(400);
     expect(await json(response)).toMatchObject({ error: "invalid_log_level" });
+  });
+
+  test("fetch handler applies explicit log level config", async () => {
+    const response = await request("/api/config", undefined, { logLevel: "debug" });
+
+    expect(response.status).toBe(200);
+    expect(await json<{ logLevel: { level: string; fromEnv: boolean } }>(response)).toMatchObject({ logLevel: { level: "debug", fromEnv: true } });
   });
 
   test("source creation returns webhook URL only from create and list omits it", async () => {
@@ -543,6 +577,17 @@ describe("API", () => {
       body: JSON.stringify({ endpoint }),
     });
     expect(await json<{ subscribed: boolean }>(lookupAfterDelete)).toEqual({ subscribed: false });
+  });
+
+  test("browser push subscription rejects oversized endpoints", async () => {
+    const response = await request("/api/browser-push/subscriptions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ subscription: browserPushSubscription(`https://push.example.test/${"x".repeat(BROWSER_PUSH_ENDPOINT_MAX_CHARS)}`) }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await json(response)).toMatchObject({ error: "invalid_request" });
   });
 
   test("webhook fanout sends compact browser push payloads to subscribed browsers", async () => {
