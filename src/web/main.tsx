@@ -104,6 +104,16 @@ function normalizeMarkdownForDisplay(value: string): string {
   return value.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n");
 }
 
+function NotificationTimestamp({ value }: { value: string }) {
+  const date = new Date(value);
+  return (
+    <span className="listen-notification-timestamp" aria-label={date.toLocaleString()}>
+      <span>{date.toLocaleDateString()}</span>
+      <span>{date.toLocaleTimeString()}</span>
+    </span>
+  );
+}
+
 function useSources(): [SourceResponse[], () => Promise<void>] {
   const [sources, setSources] = useState<SourceResponse[]>([]);
   const [authBlocked, setAuthBlocked] = useState(false);
@@ -168,7 +178,7 @@ function InboxView({ route, refreshSources }: { route: WebAppRoute; refreshSourc
                   </span>
                 )}
                 description={notification.shortDescription}
-                meta={new Date(notification.createdAt).toLocaleString()}
+                meta={<NotificationTimestamp value={notification.createdAt} />}
                 onClick={() => navigateTo(notificationRoute(notification.id, sourceId))}
               />
             ))}
