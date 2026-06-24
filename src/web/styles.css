@@ -1019,6 +1019,12 @@ code {
   background: #3b82f6;
 }
 
+.listen-notification-timestamp {
+  display: inline-flex;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
 .listen-secret-copy {
   display: flex;
   align-items: flex-start;
@@ -1209,6 +1215,13 @@ code {
 
   .listen-source-create .wapp-button {
     margin-top: 0;
+  }
+
+  .listen-notification-timestamp {
+    align-items: flex-end;
+    flex-direction: column;
+    gap: 0.05rem;
+    line-height: 1.25;
   }
 }
 
