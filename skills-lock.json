@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "webapp": {
+      "source": "pablozaiden/webapp",
+      "sourceType": "github",
+      "skillPath": "skills/webapp/SKILL.md",
+      "computedHash": "6b43c91fbc293514307d9759f4378f79529cfc9052010194683df206cc247af3"
+    }
+  }
+}

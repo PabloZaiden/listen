@@ -1,3 +1,8 @@
+---
+name: webapp
+description: 'Build, modify, validate, and ship apps using @pablozaiden/webapp. Use when creating framework apps, adding routes, auth, settings, realtime, sidebar actions, Docker, GitHub Actions, screenshots, or Playwright validation.'
+---
+
 # Webapp framework skill
 
 Use this skill when building an app with `@pablozaiden/webapp`.
@@ -5,7 +10,7 @@ Use this skill when building an app with `@pablozaiden/webapp`.
 ## Rules
 
 - Treat the app as one Bun server that serves React, API routes and websockets together.
-- Do not add Vite, a standalone client dev server, or `WEB_DIST_DIR`.
+- Do not add Vite or a standalone client dev server.
 - Use `bun --hot src/index.ts serve` for dev.
 - Keep the product as one app and one binary with subcommands (`serve`, `version`, app-specific commands, and optional framework-backed `auth`/`api`/`schema` commands). Do not split web/server/CLI into separate apps or binaries unless there is a real package boundary.
 - Keep generated apps and tooling cross-platform across macOS and Linux on arm64 and x86-64.
@@ -30,7 +35,7 @@ Use this skill when building an app with `@pablozaiden/webapp`.
 - Sidebar badges are compact colored dots; use `badge`/`badgeVariant` for status without relying on visible sidebar badge text.
 - Do not reimplement framework dialogs/modals. Framework dialogs handle Enter as confirm/primary action and Escape as cancel/close.
 - Mark destructive menu items with `destructive: true`; delete-labelled actions are treated defensively, rendered red, and ordered last by the framework.
-- Do not add app-local shell/header action menus for active entities. If the action belongs to a notification/source route-backed sidebar entity, put it on that node's `actions`.
+- Do not add app-local shell/header action menus for active entities. If the action belongs to a task/chat/agent/session/workspace/server sidebar entity, put it on that node's `actions`.
 - Framework header actions and icon/sidebar buttons must remain visible and non-deforming; let titles/subtitles truncate instead of clipping actions.
 - For user-owned live updates, prefer `ctx.userRealtime.publishEntityChanged(resource, id)` / `publishChanged(resource)` and `useRealtimeRefresh({ resources, refresh })` over custom websocket wiring. Use global `ctx.realtime` only for public/global-admin events or server-validated non-user scopes.
 - Use app-owned websocket upgrade handlers only for raw transports such as terminals, VNC or port-forward proxies; keep normal app state on framework realtime.
