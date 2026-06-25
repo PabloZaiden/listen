@@ -22,6 +22,7 @@ Use this skill when building an app with `@pablozaiden/webapp`.
 - Use scopes for API keys and device bearer tokens.
 - Keep settings framework-owned; add app-specific settings as custom sections with `scope: "user"`, `"admin"` or `"owner"`.
 - Use `WebAppRoot`, `SidebarNode` and framework UI primitives before custom shell/layout code.
+- Route components rendered inside `WebAppRoot.routes` must use `Page` as the top-level main-content wrapper. Do not render raw panels/lists directly into `WebAppRoot`, and do not use or recreate `wapp-main-content`; `Page` provides the standard content margins/padding on desktop and mobile.
 - Set `sidebar.search: false` when the app has a small fixed navigation tree and should not show the framework sidebar search box.
 - For entity actions, define one `ActionMenuItem[]` builder and attach it to the route-backed `SidebarNode.actions`; the framework reuses those actions for sidebar right-click and the active route title-bar three-line menu. Use `WebAppRoot.header.getActions` only for extra route-level actions not owned by an active sidebar node.
 - When a main-content view has multiple available actions, put them in framework-owned shell actions rather than app-local header/menu implementations. Keep discrete buttons for form submission and truly primary inline controls.
@@ -33,7 +34,7 @@ Use this skill when building an app with `@pablozaiden/webapp`.
 - Framework header actions and icon/sidebar buttons must remain visible and non-deforming; let titles/subtitles truncate instead of clipping actions.
 - For user-owned live updates, prefer `ctx.userRealtime.publishEntityChanged(resource, id)` / `publishChanged(resource)` and `useRealtimeRefresh({ resources, refresh })` over custom websocket wiring. Use global `ctx.realtime` only for public/global-admin events or server-validated non-user scopes.
 - Use app-owned websocket upgrade handlers only for raw transports such as terminals, VNC or port-forward proxies; keep normal app state on framework realtime.
-- Prefer `EntityHeader`, `DataList`, `DataListRow`, `DangerZone`, `LoadingState`, `ErrorState`, `FormGroup`, `FormActions`, and `CodeValue` for main content before custom CSS.
+- Prefer `Page`, `Panel`, `DataList`, `DataListRow`, `DangerZone`, `LoadingState`, `ErrorState`, `FormGroup`, `FormActions`, and `CodeValue` for main content before custom CSS. Use `EntityHeader` only when the content needs an entity-specific heading that is not already provided by the fixed framework title bar.
 - Prefer structured `settings.sections[].rows` for settings; keep `render` only as an escape hatch.
 - All destructive delete actions must show a framework `ConfirmDialog` before the mutation. Never wire Delete buttons directly to `DELETE` requests.
 - Server lifecycle actions such as kill/reboot must show confirmation first and then a 15-second shutdown countdown progress bar after a successful response.
@@ -60,7 +61,15 @@ await app.runFromCli();
 ## Minimum UI shape
 
 ```tsx
-import { WebAppRoot, renderWebApp } from "@pablozaiden/webapp/web";
+import { Page, Panel, WebAppRoot, renderWebApp } from "@pablozaiden/webapp/web";
+
+function Home() {
+  return (
+    <Page>
+      <Panel>Hello</Panel>
+    </Page>
+  );
+}
 
 renderWebApp(
   <WebAppRoot
