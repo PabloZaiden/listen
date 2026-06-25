@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import type { BrowserPushConfigResponse, BrowserPushStatusResponse, BrowserPushSubscription } from "@listen/contracts";
-import { appFetch, Button } from "@pablozaiden/webapp/web";
+import { appFetch, Button, FormGroup, FormSection } from "@pablozaiden/webapp/web";
 
 type BrowserPushUiState = "loading" | "unsupported" | "denied" | "unsubscribed" | "subscribed" | "error";
 
@@ -222,6 +222,23 @@ function useBrowserPushSettings(): [BrowserPushState, { subscribe: () => Promise
   return [state, { subscribe, unsubscribe, refresh: () => refresh() }];
 }
 
+function browserPushDescription(state: BrowserPushState): string {
+  switch (state.status) {
+    case "loading":
+      return "Checking browser notification status...";
+    case "unsupported":
+      return "This browser does not support web push notifications.";
+    case "denied":
+      return "Notifications are blocked in this browser.";
+    case "subscribed":
+      return "This browser receives Listen notifications.";
+    case "error":
+      return "Listen could not check or update browser notifications.";
+    case "unsubscribed":
+      return "Enable Listen notifications on this browser.";
+  }
+}
+
 export function BrowserPushSettings({ onEnabled, onDisabled }: { onEnabled?: () => void; onDisabled?: () => void }): React.ReactElement {
   const [state, actions] = useBrowserPushSettings();
 
@@ -246,15 +263,18 @@ export function BrowserPushSettings({ onEnabled, onDisabled }: { onEnabled?: () 
       {state.busy ? "Enabling..." : "Enable on this browser"}
     </Button>
   );
+  const actionControls = state.status === "error" ? (
+    <>
+      {primaryAction}
+      <Button type="button" variant="ghost" onClick={() => void actions.refresh()}>Retry</Button>
+    </>
+  ) : primaryAction;
 
   return (
-    <section className={`settings-card browser-push-settings ${state.status === "error" ? "browser-push-settings-error" : ""}`} aria-live="polite">
-      <div>
-        <div className="settings-card-title-row">
-          <h3>This browser</h3>
-        </div>
+    <FormSection title="Browser notifications">
+      <FormGroup title="This browser" description={browserPushDescription(state)} actions={actionControls}>
         {state.message ? (
-          <div className="browser-push-error">
+          <div className="browser-push-error" aria-live="polite">
             <p className="error">{browserPushErrorSummary(state.message)}</p>
             <details>
               <summary>Error details</summary>
@@ -262,15 +282,7 @@ export function BrowserPushSettings({ onEnabled, onDisabled }: { onEnabled?: () 
             </details>
           </div>
         ) : null}
-      </div>
-      <div className="settings-card-actions">
-        {state.status === "error" ? (
-          <>
-            {primaryAction}
-            <Button type="button" variant="ghost" onClick={() => void actions.refresh()}>Retry</Button>
-          </>
-        ) : primaryAction}
-      </div>
-    </section>
+      </FormGroup>
+    </FormSection>
   );
 }

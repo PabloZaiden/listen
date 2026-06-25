@@ -5,12 +5,13 @@ import type { NotificationDetail, NotificationListItem, SourceResponse } from "@
 import { NOTIFICATION_SOURCE_NAME_MAX_CHARS } from "@listen/shared";
 import {
   Button,
+  ActionMenu,
   ConfirmDialog,
   DataList,
   DataListRow,
   EmptyState,
-  EntityHeader,
   FormActions,
+  Page,
   Panel,
   TextField,
   WebAppRoot,
@@ -164,7 +165,7 @@ function InboxView({ route, refreshSources }: { route: WebAppRoute; refreshSourc
   const notifications = result?.notifications ?? [];
 
   return (
-    <div className="listen-stack">
+    <Page className="listen-stack">
       {notifications.length > 0 ? (
         <Panel>
           <DataList>
@@ -185,7 +186,7 @@ function InboxView({ route, refreshSources }: { route: WebAppRoute; refreshSourc
           </DataList>
         </Panel>
       ) : null}
-    </div>
+    </Page>
   );
 }
 
@@ -216,11 +217,15 @@ function NotificationView({ route }: { route: WebAppRoute }) {
     return () => controller.abort();
   }, [refresh]);
 
-  if (error) return <EmptyState title="Notification not found" description={error} />;
-  if (!detail) return <Panel><EmptyState title="Loading notification..." /></Panel>;
+  if (error) {
+    return <Page><EmptyState title="Notification not found" description={error} /></Page>;
+  }
+  if (!detail) {
+    return <Page><Panel><EmptyState title="Loading notification..." /></Panel></Page>;
+  }
 
   return (
-    <div className="listen-stack">
+    <Page className="listen-stack">
       <Panel>
         <div className="listen-detail-summary">
           {detail.icon ? <img className="listen-detail-icon" src={detail.icon} alt="" /> : null}
@@ -249,7 +254,7 @@ function NotificationView({ route }: { route: WebAppRoute }) {
       <FormActions>
         <Button type="button" onClick={() => navigateTo(returnRoute)}>Back</Button>
       </FormActions>
-    </div>
+    </Page>
   );
 }
 
@@ -320,8 +325,7 @@ function SourcesView({ sources, refreshSources, requestConfirm }: { sources: Sou
   }
 
   return (
-    <div className="listen-stack">
-      <EntityHeader eyebrow="Configuration" title="Sources" />
+    <Page className="listen-stack">
       <Panel>
         {webhookUrl ? (
           <div className="listen-secret">
@@ -349,17 +353,20 @@ function SourcesView({ sources, refreshSources, requestConfirm }: { sources: Sou
                 description={source.lastUsedAt ? `Last used ${new Date(source.lastUsedAt).toLocaleString()}` : "Not used yet"}
                 badge={source.disabledAt ? "disabled" : undefined}
                 actions={(
-                  <span className="listen-source-actions">
-                    <Button type="button" onClick={() => rotate(source)}>Rotate token</Button>
-                    <Button type="button" variant="danger" onClick={() => deleteSource(source)}>Delete</Button>
-                  </span>
+                  <ActionMenu
+                    ariaLabel={`Actions for ${source.name}`}
+                    items={[
+                      { id: "rotate-token", label: "Rotate token", onAction: () => rotate(source) },
+                      { id: "delete", label: "Delete", destructive: true, onAction: () => deleteSource(source) },
+                    ]}
+                  />
                 )}
               />
             ))}
           </DataList>
         </Panel>
       ) : null}
-    </div>
+    </Page>
   );
 }
 

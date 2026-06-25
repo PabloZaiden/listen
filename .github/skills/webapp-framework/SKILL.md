@@ -23,9 +23,14 @@ Use this skill when building an app with `@pablozaiden/webapp`.
 - Keep settings framework-owned; add app-specific settings as custom sections with `scope: "user"`, `"admin"` or `"owner"`.
 - Use `WebAppRoot`, `SidebarNode` and framework UI primitives before custom shell/layout code.
 - Set `sidebar.search: false` when the app has a small fixed navigation tree and should not show the framework sidebar search box.
-- For entity actions, define one `ActionMenuItem[]` builder and reuse it in `SidebarNode.actions` and `WebAppRoot.header.getActions`; the visible three-line menu belongs in the framework title bar.
-- When a main-content view has multiple available actions, put them in the framework-provided title-bar three-line menu via `WebAppRoot.header.getActions` unless the user explicitly asks for a different placement. Keep discrete buttons for form submission and truly primary inline controls.
+- For entity actions, define one `ActionMenuItem[]` builder and attach it to the route-backed `SidebarNode.actions`; the framework reuses those actions for sidebar right-click and the active route title-bar three-line menu. Use `WebAppRoot.header.getActions` only for extra route-level actions not owned by an active sidebar node.
+- When a main-content view has multiple available actions, put them in framework-owned shell actions rather than app-local header/menu implementations. Keep discrete buttons for form submission and truly primary inline controls.
 - Mark route-backed sidebar entities with `pinnable: true` instead of building app-owned Pinned sections; the framework injects Pin/Unpin and persists pins in localStorage.
+- Sidebar badges are compact colored dots; use `badge`/`badgeVariant` for status without relying on visible sidebar badge text.
+- Do not reimplement framework dialogs/modals. Framework dialogs handle Enter as confirm/primary action and Escape as cancel/close.
+- Mark destructive menu items with `destructive: true`; delete-labelled actions are treated defensively, rendered red, and ordered last by the framework.
+- Do not add app-local shell/header action menus for active entities. If the action belongs to a notification/source route-backed sidebar entity, put it on that node's `actions`.
+- Framework header actions and icon/sidebar buttons must remain visible and non-deforming; let titles/subtitles truncate instead of clipping actions.
 - For user-owned live updates, prefer `ctx.userRealtime.publishEntityChanged(resource, id)` / `publishChanged(resource)` and `useRealtimeRefresh({ resources, refresh })` over custom websocket wiring. Use global `ctx.realtime` only for public/global-admin events or server-validated non-user scopes.
 - Use app-owned websocket upgrade handlers only for raw transports such as terminals, VNC or port-forward proxies; keep normal app state on framework realtime.
 - Prefer `EntityHeader`, `DataList`, `DataListRow`, `DangerZone`, `LoadingState`, `ErrorState`, `FormGroup`, `FormActions`, and `CodeValue` for main content before custom CSS.
@@ -79,12 +84,6 @@ Use the framework-owned action menu for entity actions:
 const actions = buildProjectActions(project);
 
 const node = { type: "item", id: project.id, title: project.name, route: { view: "project", projectId: project.id }, actions, pinnable: true };
-
-<WebAppRoot
-  header={{
-    getActions: ({ route }) => route.view === "project" ? buildProjectActionsForRoute(route) : [],
-  }}
-/>
 ```
 
 Use the declarative realtime helpers:
