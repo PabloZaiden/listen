@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@pablozaiden/installer": "latest",
-    "@pablozaiden/webapp": "0.3.2",
+    "@pablozaiden/webapp": "0.3.3",
     "@simplewebauthn/browser": "latest",
     "@simplewebauthn/server": "latest",
     "@tailwindcss/typography": "latest",
