@@ -34,7 +34,8 @@ export function initializeDatabase(dataDir = process.env["LISTEN_DATA_DIR"] ?? "
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       last_used_at TEXT,
-      disabled_at TEXT
+      disabled_at TEXT,
+      FOREIGN KEY (user_id) REFERENCES webapp_users(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS notifications (
@@ -48,6 +49,7 @@ export function initializeDatabase(dataDir = process.env["LISTEN_DATA_DIR"] ?? "
       icon_data_url TEXT,
       created_at TEXT NOT NULL,
       opened_at TEXT,
+      FOREIGN KEY (user_id) REFERENCES webapp_users(id) ON DELETE CASCADE,
       FOREIGN KEY (source_id) REFERENCES webhook_sources(id) ON DELETE CASCADE
     );
 
@@ -65,7 +67,8 @@ export function initializeDatabase(dataDir = process.env["LISTEN_DATA_DIR"] ?? "
       last_failure_at TEXT,
       failure_count INTEGER NOT NULL DEFAULT 0,
       next_attempt_at TEXT,
-      disabled_at TEXT
+      disabled_at TEXT,
+      FOREIGN KEY (user_id) REFERENCES webapp_users(id) ON DELETE CASCADE
     );
 
     CREATE INDEX IF NOT EXISTS idx_notifications_created_at
