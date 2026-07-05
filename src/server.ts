@@ -30,11 +30,17 @@ const SERVICE_WORKER_PATH = "/service-worker";
 const WEB_APP_ICON_192_PATH = "/web-app-manifest-192x192.png";
 const WEB_APP_ICON_512_PATH = "/web-app-manifest-512x512.png";
 const APPLE_TOUCH_ICON_PATH = "/apple-touch-icon.png";
+const STATIC_WEB_ICON_192_PATH = "/web/icons/listen-192.png";
+const STATIC_WEB_ICON_512_PATH = "/web/icons/listen-512.png";
+const STATIC_APPLE_TOUCH_ICON_PATH = "/web/icons/apple-touch-icon.png";
 const serviceWorkerScript = new Bun.Transpiler({ loader: "ts", target: "browser" }).transformSync(serviceWorkerSource);
 const WEB_ICON_PATHS = new Map([
   [WEB_APP_ICON_192_PATH, listenIcon192Path],
   [WEB_APP_ICON_512_PATH, listenIcon512Path],
   [APPLE_TOUCH_ICON_PATH, appleTouchIconPath],
+  [STATIC_WEB_ICON_192_PATH, listenIcon192Path],
+  [STATIC_WEB_ICON_512_PATH, listenIcon512Path],
+  [STATIC_APPLE_TOUCH_ICON_PATH, appleTouchIconPath],
 ]);
 
 function serviceWorkerResponse(): Response {
@@ -353,6 +359,9 @@ export function getWebAppServer(): WebAppServer<ListenRealtimeEvent> {
       [WEB_APP_ICON_192_PATH]: { GET: () => iconResponse(WEB_APP_ICON_192_PATH) },
       [WEB_APP_ICON_512_PATH]: { GET: () => iconResponse(WEB_APP_ICON_512_PATH) },
       [APPLE_TOUCH_ICON_PATH]: { GET: () => iconResponse(APPLE_TOUCH_ICON_PATH) },
+      [STATIC_WEB_ICON_192_PATH]: { GET: () => iconResponse(STATIC_WEB_ICON_192_PATH) },
+      [STATIC_WEB_ICON_512_PATH]: { GET: () => iconResponse(STATIC_WEB_ICON_512_PATH) },
+      [STATIC_APPLE_TOUCH_ICON_PATH]: { GET: () => iconResponse(STATIC_APPLE_TOUCH_ICON_PATH) },
     },
   });
   return app;

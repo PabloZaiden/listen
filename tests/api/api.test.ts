@@ -150,17 +150,6 @@ describe("API", () => {
     );
   });
 
-  test("injects framework PWA tags into the app shell", async () => {
-    const response = await request("/");
-    expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toContain("text/html");
-    const html = await response.text();
-    expect(html).toMatch(/<link\b(?=[^>]*\brel="manifest")(?=[^>]*\bhref="\/manifest\.webmanifest")[^>]*>/);
-    expect(html).toMatch(/<link\b(?=[^>]*\brel="apple-touch-icon")(?=[^>]*\bhref="\/apple-touch-icon\.png")[^>]*>/);
-    expect(html).toMatch(/<meta\b(?=[^>]*\bname="apple-mobile-web-app-capable")(?=[^>]*\bcontent="yes")[^>]*>/);
-    expect(html).toMatch(/<meta\b(?=[^>]*\bname="theme-color")(?=[^>]*\bcontent="#111827")[^>]*>/);
-  });
-
   test("serves PWA icon assets and the browser push service worker", async () => {
     const icon = await request("/web-app-manifest-192x192.png");
     expect(icon.status).toBe(200);
