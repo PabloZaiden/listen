@@ -1,20 +1,20 @@
 {
   "name": "Listen",
   "short_name": "Listen",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#f3f4f6",
-  "theme_color": "#374151",
+  "theme_color": "#111827",
   "icons": [
     {
-      "src": "/icons/listen-192.png",
+      "src": "./web/icons/listen-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icons/listen-512.png",
+      "src": "./web/icons/listen-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

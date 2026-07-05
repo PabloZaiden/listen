@@ -3,8 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f8fafc" />
     <title>Listen</title>
+    <link rel="manifest" href="./site.webmanifest" />
+    <link rel="icon" href="./web/icons/listen-192.png" type="image/png" sizes="192x192" />
+    <link rel="icon" href="./web/icons/listen-512.png" type="image/png" sizes="512x512" />
+    <link rel="apple-touch-icon" href="./web/icons/apple-touch-icon.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Listen" />
+    <meta name="theme-color" content="#111827" />
     <script>
       (() => {
         const key = "listen-theme-preference";
@@ -27,7 +34,6 @@
         const resolved = theme === "system" ? (prefersDark() ? "dark" : "light") : theme;
         document.documentElement.dataset.theme = theme;
         document.documentElement.dataset.resolvedTheme = resolved;
-        document.querySelector('meta[name="theme-color"]')?.setAttribute("content", resolved === "dark" ? "#111827" : "#f8fafc");
       })();
     </script>
   </head>

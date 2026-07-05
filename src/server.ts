@@ -2,7 +2,6 @@ import type { Server } from "bun";
 import webIndex from "./index.html";
 // @ts-expect-error Bun supports importing a TypeScript file as raw text with this import attribute.
 import serviceWorkerSource from "./web/service-worker.ts" with { type: "text" };
-import webManifest from "./web/manifest.webmanifest" with { type: "text" };
 import listenIcon192Path from "./web/icons/listen-192.png" with { type: "file" };
 import listenIcon512Path from "./web/icons/listen-512.png" with { type: "file" };
 import appleTouchIconPath from "./web/icons/apple-touch-icon.png" with { type: "file" };
@@ -28,12 +27,20 @@ type ListenRealtimeEvent = ResourceRealtimeEvent;
 const log = createLogger("server");
 const webhookLog = createLogger("api:webhooks");
 const SERVICE_WORKER_PATH = "/service-worker";
-const WEB_MANIFEST_PATH = "/manifest.webmanifest";
+const WEB_APP_ICON_192_PATH = "/web-app-manifest-192x192.png";
+const WEB_APP_ICON_512_PATH = "/web-app-manifest-512x512.png";
+const APPLE_TOUCH_ICON_PATH = "/apple-touch-icon.png";
+const STATIC_WEB_ICON_192_PATH = "/web/icons/listen-192.png";
+const STATIC_WEB_ICON_512_PATH = "/web/icons/listen-512.png";
+const STATIC_APPLE_TOUCH_ICON_PATH = "/web/icons/apple-touch-icon.png";
 const serviceWorkerScript = new Bun.Transpiler({ loader: "ts", target: "browser" }).transformSync(serviceWorkerSource);
 const WEB_ICON_PATHS = new Map([
-  ["/icons/listen-192.png", listenIcon192Path],
-  ["/icons/listen-512.png", listenIcon512Path],
-  ["/icons/apple-touch-icon.png", appleTouchIconPath],
+  [WEB_APP_ICON_192_PATH, listenIcon192Path],
+  [WEB_APP_ICON_512_PATH, listenIcon512Path],
+  [APPLE_TOUCH_ICON_PATH, appleTouchIconPath],
+  [STATIC_WEB_ICON_192_PATH, listenIcon192Path],
+  [STATIC_WEB_ICON_512_PATH, listenIcon512Path],
+  [STATIC_APPLE_TOUCH_ICON_PATH, appleTouchIconPath],
 ]);
 
 function serviceWorkerResponse(): Response {
@@ -338,13 +345,23 @@ export function getWebAppServer(): WebAppServer<ListenRealtimeEvent> {
     auth: { passkeys: true, apiKeys: true, deviceAuth: true },
     logLevel: { onChange: setLogLevel },
     realtime: { path: "/api/ws" },
+    pwa: {
+      shortName: "Listen",
+      themeColor: "#111827",
+      backgroundColor: "#f3f4f6",
+      display: "standalone",
+      startUrl: "/",
+      scope: "/",
+    },
     routes,
     publicRoutes: {
       [SERVICE_WORKER_PATH]: { GET: serviceWorkerResponse },
-      [WEB_MANIFEST_PATH]: { GET: webManifest, headers: { "content-type": "application/manifest+json; charset=utf-8" } },
-      "/icons/listen-192.png": { GET: () => iconResponse("/icons/listen-192.png") },
-      "/icons/listen-512.png": { GET: () => iconResponse("/icons/listen-512.png") },
-      "/icons/apple-touch-icon.png": { GET: () => iconResponse("/icons/apple-touch-icon.png") },
+      [WEB_APP_ICON_192_PATH]: { GET: () => iconResponse(WEB_APP_ICON_192_PATH) },
+      [WEB_APP_ICON_512_PATH]: { GET: () => iconResponse(WEB_APP_ICON_512_PATH) },
+      [APPLE_TOUCH_ICON_PATH]: { GET: () => iconResponse(APPLE_TOUCH_ICON_PATH) },
+      [STATIC_WEB_ICON_192_PATH]: { GET: () => iconResponse(STATIC_WEB_ICON_192_PATH) },
+      [STATIC_WEB_ICON_512_PATH]: { GET: () => iconResponse(STATIC_WEB_ICON_512_PATH) },
+      [STATIC_APPLE_TOUCH_ICON_PATH]: { GET: () => iconResponse(STATIC_APPLE_TOUCH_ICON_PATH) },
     },
   });
   return app;
