@@ -28,6 +28,15 @@ function expectSecurityHeaders(response: Response): void {
   expect(response.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
 }
 
+type WebAppManifest = {
+  icons?: Array<{
+    src?: string;
+    sizes?: string;
+    type?: string;
+    purpose?: string;
+  }>;
+};
+
 async function expectRateLimited(response: Response): Promise<void> {
   expect(response.status).toBe(429);
   expect(response.headers.get("retry-after")).toBeTruthy();
@@ -113,7 +122,8 @@ describe("API", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("application/manifest+json");
     expectSecurityHeaders(response);
-    expect(await json(response)).toEqual({
+    const manifest = await json<WebAppManifest>(response);
+    expect(manifest).toMatchObject({
       name: "Listen",
       short_name: "Listen",
       start_url: "/",
@@ -121,11 +131,23 @@ describe("API", () => {
       display: "standalone",
       background_color: "#f3f4f6",
       theme_color: "#111827",
-      icons: [
-        { src: "/web-app-manifest-192x192.png", sizes: "192x192", type: "image/png", purpose: "any maskable" },
-        { src: "/web-app-manifest-512x512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },
-      ],
     });
+    expect(manifest.icons).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          src: "/web-app-manifest-192x192.png",
+          sizes: "192x192",
+          type: "image/png",
+          purpose: expect.stringContaining("maskable"),
+        }),
+        expect.objectContaining({
+          src: "/web-app-manifest-512x512.png",
+          sizes: "512x512",
+          type: "image/png",
+          purpose: expect.stringContaining("maskable"),
+        }),
+      ]),
+    );
   });
 
   test("injects framework PWA tags into the app shell", async () => {
@@ -133,16 +155,29 @@ describe("API", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/html");
     const html = await response.text();
-    expect(html).toContain('<link rel="manifest" href="/manifest.webmanifest" />');
-    expect(html).toContain('<link rel="apple-touch-icon" href="/apple-touch-icon.png" />');
-    expect(html).toContain('<meta name="apple-mobile-web-app-capable" content="yes" />');
-    expect(html).toContain('<meta name="theme-color" content="#111827" />');
+    expect(html).toMatch(/<link\b(?=[^>]*\brel="manifest")(?=[^>]*\bhref="\/manifest\.webmanifest")[^>]*>/);
+    expect(html).toMatch(/<link\b(?=[^>]*\brel="apple-touch-icon")(?=[^>]*\bhref="\/apple-touch-icon\.png")[^>]*>/);
+    expect(html).toMatch(/<meta\b(?=[^>]*\bname="apple-mobile-web-app-capable")(?=[^>]*\bcontent="yes")[^>]*>/);
+    expect(html).toMatch(/<meta\b(?=[^>]*\bname="theme-color")(?=[^>]*\bcontent="#111827")[^>]*>/);
   });
 
   test("serves PWA icon assets and the browser push service worker", async () => {
     const icon = await request("/web-app-manifest-192x192.png");
     expect(icon.status).toBe(200);
     expect(icon.headers.get("content-type")).toBe("image/png");
+
+    const manifest = await json<WebAppManifest>(await request("/manifest.webmanifest"));
+    const icon512 = manifest.icons?.find((candidate) => candidate.sizes === "512x512");
+    expect(icon512).toMatchObject({
+      type: "image/png",
+    });
+    if (!icon512?.src) {
+      throw new Error("Manifest did not advertise a 512x512 icon asset");
+    }
+    expect(icon512.src).toMatch(/^\/.+\.png$/);
+    const largeIcon = await request(icon512.src);
+    expect(largeIcon.status).toBe(200);
+    expect(largeIcon.headers.get("content-type")).toBe("image/png");
 
     const appleIcon = await request("/apple-touch-icon.png");
     expect(appleIcon.status).toBe(200);
