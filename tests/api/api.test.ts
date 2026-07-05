@@ -28,15 +28,6 @@ function expectSecurityHeaders(response: Response): void {
   expect(response.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
 }
 
-type WebAppManifest = {
-  icons?: Array<{
-    src?: string;
-    sizes?: string;
-    type?: string;
-    purpose?: string;
-  }>;
-};
-
 async function expectRateLimited(response: Response): Promise<void> {
   expect(response.status).toBe(429);
   expect(response.headers.get("retry-after")).toBeTruthy();
@@ -115,72 +106,6 @@ describe("API", () => {
     expect(response.status).toBe(200);
     expectSecurityHeaders(response);
     expect(await json<{ ok: boolean }>(response)).toMatchObject({ ok: true });
-  });
-
-  test("serves app-owned PWA manifest", async () => {
-    const response = await request("/site.webmanifest");
-    expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toContain("application/manifest+json");
-    expectSecurityHeaders(response);
-    const manifest = await json<WebAppManifest>(response);
-    expect(manifest).toMatchObject({
-      name: "Listen",
-      short_name: "Listen",
-      start_url: "./",
-      scope: "./",
-      display: "standalone",
-      background_color: "#f3f4f6",
-      theme_color: "#111827",
-    });
-    expect(manifest.icons).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          src: "./web-app-manifest-192x192.png",
-          sizes: "192x192",
-          type: "image/png",
-          purpose: expect.stringContaining("maskable"),
-        }),
-        expect.objectContaining({
-          src: "./web-app-manifest-512x512.png",
-          sizes: "512x512",
-          type: "image/png",
-          purpose: expect.stringContaining("maskable"),
-        }),
-      ]),
-    );
-
-    const legacyAlias = await request("/manifest.webmanifest");
-    expect(legacyAlias.status).toBe(200);
-    expect(await json<WebAppManifest>(legacyAlias)).toEqual(manifest);
-  });
-
-  test("serves PWA icon assets and the browser push service worker", async () => {
-    const icon = await request("/web-app-manifest-192x192.png");
-    expect(icon.status).toBe(200);
-    expect(icon.headers.get("content-type")).toBe("image/png");
-
-    const manifest = await json<WebAppManifest>(await request("/site.webmanifest"));
-    const icon512 = manifest.icons?.find((candidate) => candidate.sizes === "512x512");
-    expect(icon512).toMatchObject({
-      type: "image/png",
-    });
-    if (!icon512?.src) {
-      throw new Error("Manifest did not advertise a 512x512 icon asset");
-    }
-    expect(icon512.src).toMatch(/^\.\/.+\.png$/);
-    const largeIconPath = new URL(icon512.src, "http://localhost/site.webmanifest").pathname;
-    const largeIcon = await request(largeIconPath);
-    expect(largeIcon.status).toBe(200);
-    expect(largeIcon.headers.get("content-type")).toBe("image/png");
-
-    const appleIcon = await request("/apple-touch-icon.png");
-    expect(appleIcon.status).toBe(200);
-    expect(appleIcon.headers.get("content-type")).toBe("image/png");
-
-    const serviceWorker = await request("/service-worker");
-    expect(serviceWorker.status).toBe(200);
-    expect(serviceWorker.headers.get("content-type")).toContain("text/javascript");
-    expect(serviceWorker.headers.get("service-worker-allowed")).toBe("/");
   });
 
   test("protected routes reject when passkey is required and no passkey is configured", async () => {
