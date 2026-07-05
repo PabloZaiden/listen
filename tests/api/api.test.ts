@@ -117,8 +117,8 @@ describe("API", () => {
     expect(await json<{ ok: boolean }>(response)).toMatchObject({ ok: true });
   });
 
-  test("serves PWA manifest from the framework configuration", async () => {
-    const response = await request("/manifest.webmanifest");
+  test("serves app-owned PWA manifest", async () => {
+    const response = await request("/site.webmanifest");
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("application/manifest+json");
     expectSecurityHeaders(response);
@@ -126,8 +126,8 @@ describe("API", () => {
     expect(manifest).toMatchObject({
       name: "Listen",
       short_name: "Listen",
-      start_url: "/",
-      scope: "/",
+      start_url: "./",
+      scope: "./",
       display: "standalone",
       background_color: "#f3f4f6",
       theme_color: "#111827",
@@ -135,19 +135,23 @@ describe("API", () => {
     expect(manifest.icons).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          src: "/web-app-manifest-192x192.png",
+          src: "./web-app-manifest-192x192.png",
           sizes: "192x192",
           type: "image/png",
           purpose: expect.stringContaining("maskable"),
         }),
         expect.objectContaining({
-          src: "/web-app-manifest-512x512.png",
+          src: "./web-app-manifest-512x512.png",
           sizes: "512x512",
           type: "image/png",
           purpose: expect.stringContaining("maskable"),
         }),
       ]),
     );
+
+    const legacyAlias = await request("/manifest.webmanifest");
+    expect(legacyAlias.status).toBe(200);
+    expect(await json<WebAppManifest>(legacyAlias)).toEqual(manifest);
   });
 
   test("serves PWA icon assets and the browser push service worker", async () => {
@@ -155,7 +159,7 @@ describe("API", () => {
     expect(icon.status).toBe(200);
     expect(icon.headers.get("content-type")).toBe("image/png");
 
-    const manifest = await json<WebAppManifest>(await request("/manifest.webmanifest"));
+    const manifest = await json<WebAppManifest>(await request("/site.webmanifest"));
     const icon512 = manifest.icons?.find((candidate) => candidate.sizes === "512x512");
     expect(icon512).toMatchObject({
       type: "image/png",
@@ -163,8 +167,9 @@ describe("API", () => {
     if (!icon512?.src) {
       throw new Error("Manifest did not advertise a 512x512 icon asset");
     }
-    expect(icon512.src).toMatch(/^\/.+\.png$/);
-    const largeIcon = await request(icon512.src);
+    expect(icon512.src).toMatch(/^\.\/.+\.png$/);
+    const largeIconPath = new URL(icon512.src, "http://localhost/site.webmanifest").pathname;
+    const largeIcon = await request(largeIconPath);
     expect(largeIcon.status).toBe(200);
     expect(largeIcon.headers.get("content-type")).toBe("image/png");
 

@@ -2,6 +2,7 @@ import type { Server } from "bun";
 import webIndex from "./index.html";
 // @ts-expect-error Bun supports importing a TypeScript file as raw text with this import attribute.
 import serviceWorkerSource from "./web/service-worker.ts" with { type: "text" };
+import siteManifestPath from "./site.webmanifest" with { type: "file" };
 import listenIcon192Path from "./web/icons/listen-192.png" with { type: "file" };
 import listenIcon512Path from "./web/icons/listen-512.png" with { type: "file" };
 import appleTouchIconPath from "./web/icons/apple-touch-icon.png" with { type: "file" };
@@ -27,6 +28,8 @@ type ListenRealtimeEvent = ResourceRealtimeEvent;
 const log = createLogger("server");
 const webhookLog = createLogger("api:webhooks");
 const SERVICE_WORKER_PATH = "/service-worker";
+const SITE_MANIFEST_PATH = "/site.webmanifest";
+const LEGACY_MANIFEST_PATH = "/manifest.webmanifest";
 const WEB_APP_ICON_192_PATH = "/web-app-manifest-192x192.png";
 const WEB_APP_ICON_512_PATH = "/web-app-manifest-512x512.png";
 const APPLE_TOUCH_ICON_PATH = "/apple-touch-icon.png";
@@ -49,6 +52,14 @@ function serviceWorkerResponse(): Response {
       "content-type": "text/javascript; charset=utf-8",
       "service-worker-allowed": "/",
       "cache-control": "no-cache",
+    },
+  });
+}
+
+function manifestResponse(): Response {
+  return new Response(Bun.file(siteManifestPath), {
+    headers: {
+      "content-type": "application/manifest+json; charset=utf-8",
     },
   });
 }
@@ -345,17 +356,11 @@ export function getWebAppServer(): WebAppServer<ListenRealtimeEvent> {
     auth: { passkeys: true, apiKeys: true, deviceAuth: true },
     logLevel: { onChange: setLogLevel },
     realtime: { path: "/api/ws" },
-    pwa: {
-      shortName: "Listen",
-      themeColor: "#111827",
-      backgroundColor: "#f3f4f6",
-      display: "standalone",
-      startUrl: "/",
-      scope: "/",
-    },
     routes,
     publicRoutes: {
       [SERVICE_WORKER_PATH]: { GET: serviceWorkerResponse },
+      [SITE_MANIFEST_PATH]: { GET: manifestResponse },
+      [LEGACY_MANIFEST_PATH]: { GET: manifestResponse },
       [WEB_APP_ICON_192_PATH]: { GET: () => iconResponse(WEB_APP_ICON_192_PATH) },
       [WEB_APP_ICON_512_PATH]: { GET: () => iconResponse(WEB_APP_ICON_512_PATH) },
       [APPLE_TOUCH_ICON_PATH]: { GET: () => iconResponse(APPLE_TOUCH_ICON_PATH) },
