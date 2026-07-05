@@ -176,6 +176,7 @@ describe("API", () => {
     expect(serviceWorker.status).toBe(200);
     expect(serviceWorker.headers.get("content-type")).toContain("text/javascript");
     expect(serviceWorker.headers.get("service-worker-allowed")).toBe("/");
+    expect(await serviceWorker.text()).not.toContain("export {}");
   });
 
   test("protected routes reject when passkey is required and no passkey is configured", async () => {
