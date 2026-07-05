@@ -2,24 +2,16 @@ function parseUnreadCount(value: unknown): number | undefined {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
 }
 
+type AppBadgeGlobal = typeof globalThis & {
+  listenUpdateAppBadge: (badgeNavigator: Window["navigator"], unreadCount: number, warningSource: string) => Promise<void>;
+};
+
 async function updateAppBadgeFromPush(unreadCount: number | undefined): Promise<void> {
   if (unreadCount === undefined) {
     return;
   }
 
-  try {
-    if (unreadCount > 0) {
-      await navigator.setAppBadge?.(unreadCount);
-      return;
-    }
-    if (navigator.clearAppBadge) {
-      await navigator.clearAppBadge();
-      return;
-    }
-    await navigator.setAppBadge?.(0);
-  } catch (error) {
-    console.warn("Could not update app badge from browser push", { error });
-  }
+  await (globalThis as AppBadgeGlobal).listenUpdateAppBadge(navigator, unreadCount, "browser push");
 }
 
 self.addEventListener("push", (event) => {

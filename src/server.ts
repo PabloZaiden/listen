@@ -1,6 +1,8 @@
 import type { Server } from "bun";
 import webIndex from "./index.html";
 // @ts-expect-error Bun supports importing a TypeScript file as raw text with this import attribute.
+import appBadgeSource from "./web/app-badge.ts" with { type: "text" };
+// @ts-expect-error Bun supports importing a TypeScript file as raw text with this import attribute.
 import serviceWorkerSource from "./web/service-worker.ts" with { type: "text" };
 import siteManifestPath from "./site.webmanifest" with { type: "file" };
 import listenIcon192Path from "./web/icons/listen-192.png" with { type: "file" };
@@ -36,7 +38,7 @@ const APPLE_TOUCH_ICON_PATH = "/apple-touch-icon.png";
 const STATIC_WEB_ICON_192_PATH = "/web/icons/listen-192.png";
 const STATIC_WEB_ICON_512_PATH = "/web/icons/listen-512.png";
 const STATIC_APPLE_TOUCH_ICON_PATH = "/web/icons/apple-touch-icon.png";
-const serviceWorkerScript = new Bun.Transpiler({ loader: "ts", target: "browser" }).transformSync(serviceWorkerSource);
+const serviceWorkerScript = new Bun.Transpiler({ loader: "ts", target: "browser" }).transformSync(`${appBadgeSource}\n${serviceWorkerSource}`);
 const WEB_ICON_PATHS = new Map([
   [WEB_APP_ICON_192_PATH, listenIcon192Path],
   [WEB_APP_ICON_512_PATH, listenIcon512Path],
