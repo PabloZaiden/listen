@@ -25,6 +25,7 @@ import {
 } from "@pablozaiden/webapp/web";
 import "@pablozaiden/webapp/web/styles.css";
 import { LISTEN_VERSION } from "../version";
+import "./app-badge";
 import { BrowserPushSettings } from "./browserPushSettings";
 import "./styles.css";
 
@@ -82,25 +83,12 @@ type BadgeNavigator = Navigator & {
   clearAppBadge?: () => Promise<void>;
 };
 
-async function updateAppBadgeFromUnreadCount(unreadCount: number): Promise<void> {
-  const badgeNavigator: BadgeNavigator = navigator;
-  if (!badgeNavigator.setAppBadge && !badgeNavigator.clearAppBadge) {
-    return;
-  }
+type AppBadgeGlobal = typeof globalThis & {
+  listenUpdateAppBadge: (badgeNavigator: BadgeNavigator, unreadCount: number, warningSource: string) => Promise<void>;
+};
 
-  try {
-    if (unreadCount > 0) {
-      await badgeNavigator.setAppBadge?.(unreadCount);
-      return;
-    }
-    if (badgeNavigator.clearAppBadge) {
-      await badgeNavigator.clearAppBadge();
-      return;
-    }
-    await badgeNavigator.setAppBadge?.(0);
-  } catch (error) {
-    console.warn("Could not update app badge from notifications refresh", { error });
-  }
+function syncAppBadgeFromUnreadCount(unreadCount: number): void {
+  void (globalThis as AppBadgeGlobal).listenUpdateAppBadge(navigator as BadgeNavigator, unreadCount, "notifications refresh");
 }
 
 function isAuthRequiredError(error: unknown): boolean {
@@ -174,8 +162,8 @@ function useNotifications(sourceId?: string): [ListNotificationsResponse | undef
     const params = new URLSearchParams({ limit: "50", offset: "0" });
     if (sourceId) params.set("sourceId", sourceId);
     const response = await api<ListNotificationsResponse>(`/api/notifications?${params}`);
-    await updateAppBadgeFromUnreadCount(response.unreadCount);
     setResult(response);
+    syncAppBadgeFromUnreadCount(response.unreadCount);
   }, [sourceId]);
   useEffect(() => void refresh().catch((error) => console.error("Could not load notifications", error)), [refresh]);
   return [result, refresh];
