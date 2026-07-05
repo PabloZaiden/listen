@@ -77,6 +77,32 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   return await response.json() as T;
 }
 
+type BadgeNavigator = Navigator & {
+  setAppBadge?: (contents?: number) => Promise<void>;
+  clearAppBadge?: () => Promise<void>;
+};
+
+async function updateAppBadgeFromUnreadCount(unreadCount: number): Promise<void> {
+  const badgeNavigator: BadgeNavigator = navigator;
+  if (!badgeNavigator.setAppBadge && !badgeNavigator.clearAppBadge) {
+    return;
+  }
+
+  try {
+    if (unreadCount > 0) {
+      await badgeNavigator.setAppBadge?.(unreadCount);
+      return;
+    }
+    if (badgeNavigator.clearAppBadge) {
+      await badgeNavigator.clearAppBadge();
+      return;
+    }
+    await badgeNavigator.setAppBadge?.(0);
+  } catch (error) {
+    console.warn("Could not update app badge from notifications refresh", { error });
+  }
+}
+
 function isAuthRequiredError(error: unknown): boolean {
   return error instanceof WebAppApiError && error.status === 401 && error.error === "authentication_required";
 }
@@ -147,7 +173,9 @@ function useNotifications(sourceId?: string): [ListNotificationsResponse | undef
   const refresh = useCallback(async () => {
     const params = new URLSearchParams({ limit: "50", offset: "0" });
     if (sourceId) params.set("sourceId", sourceId);
-    setResult(await api<ListNotificationsResponse>(`/api/notifications?${params}`));
+    const response = await api<ListNotificationsResponse>(`/api/notifications?${params}`);
+    await updateAppBadgeFromUnreadCount(response.unreadCount);
+    setResult(response);
   }, [sourceId]);
   useEffect(() => void refresh().catch((error) => console.error("Could not load notifications", error)), [refresh]);
   return [result, refresh];
