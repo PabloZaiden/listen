@@ -44,10 +44,12 @@ jobs:
           grep -qi '^content-type: text/css' /tmp/listen-dev-css-headers
           curl -fsS -D /tmp/listen-dev-manifest-headers http://127.0.0.1:3018/manifest.webmanifest >/dev/null
           curl -fsS -D /tmp/listen-dev-sw-headers http://127.0.0.1:3018/service-worker >/dev/null
-          curl -fsS -D /tmp/listen-dev-icon-headers http://127.0.0.1:3018/icons/listen-192.png >/dev/null
+          curl -fsS -D /tmp/listen-dev-icon-headers http://127.0.0.1:3018/web-app-manifest-192x192.png >/dev/null
+          curl -fsS -D /tmp/listen-dev-apple-icon-headers http://127.0.0.1:3018/apple-touch-icon.png >/dev/null
           grep -qi '^content-type: application/manifest+json' /tmp/listen-dev-manifest-headers
           grep -qi '^content-type: text/javascript' /tmp/listen-dev-sw-headers
           grep -qi '^content-type: image/png' /tmp/listen-dev-icon-headers
+          grep -qi '^content-type: image/png' /tmp/listen-dev-apple-icon-headers
       - run: |
           docker build -t listen-pr-smoke .
           docker run --rm -d --name listen-pr-smoke -p 3019:8080 \
@@ -75,7 +77,9 @@ jobs:
           grep -qi '^content-type: text/css' /tmp/listen-css-headers
           curl -fsS -D /tmp/listen-manifest-headers http://127.0.0.1:3019/manifest.webmanifest >/dev/null
           curl -fsS -D /tmp/listen-sw-headers http://127.0.0.1:3019/service-worker >/dev/null
-          curl -fsS -D /tmp/listen-icon-headers http://127.0.0.1:3019/icons/listen-192.png >/dev/null
+          curl -fsS -D /tmp/listen-icon-headers http://127.0.0.1:3019/web-app-manifest-192x192.png >/dev/null
+          curl -fsS -D /tmp/listen-apple-icon-headers http://127.0.0.1:3019/apple-touch-icon.png >/dev/null
           grep -qi '^content-type: application/manifest+json' /tmp/listen-manifest-headers
           grep -qi '^content-type: text/javascript' /tmp/listen-sw-headers
           grep -qi '^content-type: image/png' /tmp/listen-icon-headers
+          grep -qi '^content-type: image/png' /tmp/listen-apple-icon-headers

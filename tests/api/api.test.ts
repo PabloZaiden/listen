@@ -108,6 +108,52 @@ describe("API", () => {
     expect(await json<{ ok: boolean }>(response)).toMatchObject({ ok: true });
   });
 
+  test("serves PWA manifest from the framework configuration", async () => {
+    const response = await request("/manifest.webmanifest");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("application/manifest+json");
+    expectSecurityHeaders(response);
+    expect(await json(response)).toEqual({
+      name: "Listen",
+      short_name: "Listen",
+      start_url: "/",
+      scope: "/",
+      display: "standalone",
+      background_color: "#f3f4f6",
+      theme_color: "#111827",
+      icons: [
+        { src: "/web-app-manifest-192x192.png", sizes: "192x192", type: "image/png", purpose: "any maskable" },
+        { src: "/web-app-manifest-512x512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },
+      ],
+    });
+  });
+
+  test("injects framework PWA tags into the app shell", async () => {
+    const response = await request("/");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/html");
+    const html = await response.text();
+    expect(html).toContain('<link rel="manifest" href="/manifest.webmanifest" />');
+    expect(html).toContain('<link rel="apple-touch-icon" href="/apple-touch-icon.png" />');
+    expect(html).toContain('<meta name="apple-mobile-web-app-capable" content="yes" />');
+    expect(html).toContain('<meta name="theme-color" content="#111827" />');
+  });
+
+  test("serves PWA icon assets and the browser push service worker", async () => {
+    const icon = await request("/web-app-manifest-192x192.png");
+    expect(icon.status).toBe(200);
+    expect(icon.headers.get("content-type")).toBe("image/png");
+
+    const appleIcon = await request("/apple-touch-icon.png");
+    expect(appleIcon.status).toBe(200);
+    expect(appleIcon.headers.get("content-type")).toBe("image/png");
+
+    const serviceWorker = await request("/service-worker");
+    expect(serviceWorker.status).toBe(200);
+    expect(serviceWorker.headers.get("content-type")).toContain("text/javascript");
+    expect(serviceWorker.headers.get("service-worker-allowed")).toBe("/");
+  });
+
   test("protected routes reject when passkey is required and no passkey is configured", async () => {
     const response = await request("/api/sources", undefined, { passkeyDisabled: false });
     expect(response.status).toBe(401);
