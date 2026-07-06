@@ -30,17 +30,20 @@ jobs:
           done
           HTML=$(curl -fsS -D /tmp/listen-dev-root-headers http://127.0.0.1:3018/)
           grep -qi '^content-type: text/html' /tmp/listen-dev-root-headers
-          JS=$(printf '%s' "$HTML" | sed -n 's/.*src="\([^"]*\.js\)".*/\1/p')
+          SCRIPTS=$(printf '%s' "$HTML" | sed -n 's/.*src="\([^"]*\.js\)".*/\1/p')
           CSS=$(printf '%s' "$HTML" | sed -n 's/.*href="\([^"]*\.css\)".*/\1/p')
-          test -n "$JS"
+          test -n "$SCRIPTS"
           test -n "$CSS"
-          JS="${JS#./}"
-          JS="${JS#/}"
           CSS="${CSS#./}"
           CSS="${CSS#/}"
-          curl -fsS -D /tmp/listen-dev-js-headers "http://127.0.0.1:3018/$JS" >/dev/null
+          : > /tmp/listen-dev-js-headers
+          for JS in $SCRIPTS; do
+            JS="${JS#./}"
+            JS="${JS#/}"
+            curl -fsS -D /tmp/listen-dev-js-headers "http://127.0.0.1:3018/$JS" >/dev/null
+            grep -qi '^content-type: .*javascript' /tmp/listen-dev-js-headers
+          done
           curl -fsS -D /tmp/listen-dev-css-headers "http://127.0.0.1:3018/$CSS" >/dev/null
-          grep -qi '^content-type: .*javascript' /tmp/listen-dev-js-headers
           grep -qi '^content-type: text/css' /tmp/listen-dev-css-headers
           curl -fsS -D /tmp/listen-dev-manifest-headers http://127.0.0.1:3018/site.webmanifest >/dev/null
           curl -fsS -D /tmp/listen-dev-sw-headers http://127.0.0.1:3018/service-worker >/dev/null
@@ -63,17 +66,20 @@ jobs:
           done
           HTML=$(curl -fsS -D /tmp/listen-root-headers http://127.0.0.1:3019/)
           grep -qi '^content-type: text/html' /tmp/listen-root-headers
-          JS=$(printf '%s' "$HTML" | sed -n 's/.*src="\([^"]*\.js\)".*/\1/p')
+          SCRIPTS=$(printf '%s' "$HTML" | sed -n 's/.*src="\([^"]*\.js\)".*/\1/p')
           CSS=$(printf '%s' "$HTML" | sed -n 's/.*href="\([^"]*\.css\)".*/\1/p')
-          test -n "$JS"
+          test -n "$SCRIPTS"
           test -n "$CSS"
-          JS="${JS#./}"
-          JS="${JS#/}"
           CSS="${CSS#./}"
           CSS="${CSS#/}"
-          curl -fsS -D /tmp/listen-js-headers "http://127.0.0.1:3019/$JS" >/dev/null
+          : > /tmp/listen-js-headers
+          for JS in $SCRIPTS; do
+            JS="${JS#./}"
+            JS="${JS#/}"
+            curl -fsS -D /tmp/listen-js-headers "http://127.0.0.1:3019/$JS" >/dev/null
+            grep -qi '^content-type: .*javascript' /tmp/listen-js-headers
+          done
           curl -fsS -D /tmp/listen-css-headers "http://127.0.0.1:3019/$CSS" >/dev/null
-          grep -qi '^content-type: .*javascript' /tmp/listen-js-headers
           grep -qi '^content-type: text/css' /tmp/listen-css-headers
           curl -fsS -D /tmp/listen-manifest-headers http://127.0.0.1:3019/site.webmanifest >/dev/null
           curl -fsS -D /tmp/listen-sw-headers http://127.0.0.1:3019/service-worker >/dev/null
@@ -83,3 +89,57 @@ jobs:
           grep -qi '^content-type: text/javascript' /tmp/listen-sw-headers
           grep -qi '^content-type: image/png' /tmp/listen-icon-headers
           grep -qi '^content-type: image/png' /tmp/listen-apple-icon-headers
+
+          FIRST_SCRIPT=$(printf '%s\n' "$SCRIPTS" | sed -n '1p')
+          SECOND_SCRIPT=$(printf '%s\n' "$SCRIPTS" | sed -n '2p')
+          test "$FIRST_SCRIPT" = "/webapp-compiled/webapp-renderer-prelude.js"
+          test "$SECOND_SCRIPT" = "/webapp-compiled/webapp-client-entry.js"
+
+          check_compiled_module_graph() {
+            BASE_URL="$1"
+            shift
+            TMP_DIR=$(mktemp -d)
+            QUEUE="$TMP_DIR/queue"
+            SEEN="$TMP_DIR/seen"
+            IMPORTS="$TMP_DIR/imports"
+            : > "$QUEUE"
+            : > "$SEEN"
+            : > "$IMPORTS"
+            for MODULE in "$@"; do
+              printf '%s\n' "$MODULE" >> "$QUEUE"
+            done
+            while IFS= read -r MODULE; do
+              test -n "$MODULE" || continue
+              if grep -Fxq "$MODULE" "$SEEN"; then
+                continue
+              fi
+              printf '%s\n' "$MODULE" >> "$SEEN"
+              case "$MODULE" in
+                /webapp-compiled/*.js) ;;
+                *)
+                  echo "Compiled module imports a script outside /webapp-compiled: $MODULE" >&2
+                  return 1
+                  ;;
+              esac
+              MODULE_FILE="$TMP_DIR/$(printf '%s' "$MODULE" | tr '/?' '__').js"
+              curl -fsS "$BASE_URL$MODULE" -o "$MODULE_FILE"
+              if [ "$MODULE" = "/webapp-compiled/webapp-renderer-prelude.js" ]; then
+                grep -q 'configureWebAppRenderer' "$MODULE_FILE"
+              fi
+              sed -n 's/.*from"\([^"]*\.js\)".*/\1/p; s/.*import("\([^"]*\.js\)").*/\1/p' "$MODULE_FILE" > "$IMPORTS"
+              while IFS= read -r IMPORTED; do
+                test -n "$IMPORTED" || continue
+                case "$IMPORTED" in
+                  /webapp-compiled/*.js)
+                    printf '%s\n' "$IMPORTED" >> "$QUEUE"
+                    ;;
+                  /*.js|./*.js|../*.js)
+                    echo "Compiled module imports an unresolved script path: $IMPORTED" >&2
+                    return 1
+                    ;;
+                esac
+              done < "$IMPORTS"
+            done < "$QUEUE"
+          }
+
+          check_compiled_module_graph "http://127.0.0.1:3019" "$FIRST_SCRIPT" "$SECOND_SCRIPT"
