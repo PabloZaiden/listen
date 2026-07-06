@@ -3,6 +3,9 @@ import type { Server } from "bun";
 import appBadgeSource from "./web/app-badge.ts" with { type: "text" };
 // @ts-expect-error Bun supports importing a TypeScript file as raw text with this import attribute.
 import serviceWorkerSource from "./web/service-worker.ts" with { type: "text" };
+import listenIcon192Path from "./web/icons/listen-192.png" with { type: "file" };
+import listenIcon512Path from "./web/icons/listen-512.png" with { type: "file" };
+import appleTouchIconPath from "./web/icons/apple-touch-icon.png" with { type: "file" };
 import { createWebAppServer, defineRoutes, errorResponse, jsonResponse, parseJson, sqliteWebAppStore, successResponse, type ResourceRealtimeEvent, type RouteContext, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import type { BrowserPushSubscription, WebhookNotificationRequest } from "@listen/contracts";
@@ -320,11 +323,11 @@ export function getWebAppServer(): WebAppServer<ListenRealtimeEvent> {
     envPrefix: "LISTEN",
     web: {
       icons: {
-        favicon: { src: "./src/web/icons/listen-192.png", sizes: "192x192", type: "image/png" },
-        appleTouch: { src: "./src/web/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+        favicon: { src: listenIcon192Path, sizes: "192x192", type: "image/png" },
+        appleTouch: { src: appleTouchIconPath, sizes: "180x180", type: "image/png" },
         manifest: [
-          { src: "./src/web/icons/listen-192.png", sizes: "192x192", type: "image/png", purpose: "any maskable" },
-          { src: "./src/web/icons/listen-512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },
+          { src: listenIcon192Path, sizes: "192x192", type: "image/png", purpose: "any maskable" },
+          { src: listenIcon512Path, sizes: "512x512", type: "image/png", purpose: "any maskable" },
         ],
       },
     },
