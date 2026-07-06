@@ -123,9 +123,6 @@ jobs:
               esac
               MODULE_FILE="$TMP_DIR/$(printf '%s' "$MODULE" | tr '/?' '__').js"
               curl -fsS "$BASE_URL$MODULE" -o "$MODULE_FILE"
-              if [ "$MODULE" = "/webapp-compiled/webapp-renderer-prelude.js" ]; then
-                grep -q 'configureWebAppRenderer' "$MODULE_FILE"
-              fi
               sed -n 's/.*from"\([^"]*\.js\)".*/\1/p; s/.*import("\([^"]*\.js\)").*/\1/p' "$MODULE_FILE" > "$IMPORTS"
               while IFS= read -r IMPORTED; do
                 test -n "$IMPORTED" || continue
