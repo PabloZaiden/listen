@@ -35,7 +35,7 @@ export async function runMain(args: string[]): Promise<number | undefined> {
     return 0;
   }
   if (command === "serve") {
-    startServer();
+    await startServer();
     return undefined;
   }
   if (command === "config") {
