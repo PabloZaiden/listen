@@ -123,7 +123,16 @@ jobs:
               esac
               MODULE_FILE="$TMP_DIR/$(printf '%s' "$MODULE" | tr '/?' '__').js"
               curl -fsS "$BASE_URL$MODULE" -o "$MODULE_FILE"
-              sed -n 's/.*from"\([^"]*\.js\)".*/\1/p; s/.*import("\([^"]*\.js\)").*/\1/p' "$MODULE_FILE" > "$IMPORTS"
+              bun --eval '
+                const source = await Bun.file(process.argv[1]).text();
+                const quotes = "[" + String.fromCharCode(34, 39) + "]";
+                const notQuotes = "[^" + String.fromCharCode(34, 39) + "]";
+                const specifiers = [
+                  ...source.matchAll(new RegExp("(?:from|import)\\s*" + quotes + "(" + notQuotes + "+\\.js)" + quotes, "g")),
+                  ...source.matchAll(new RegExp("import\\s*\\(\\s*" + quotes + "(" + notQuotes + "+\\.js)" + quotes + "\\s*\\)", "g")),
+                ];
+                for (const match of specifiers) console.log(match[1]);
+              ' "$MODULE_FILE" > "$IMPORTS"
               while IFS= read -r IMPORTED; do
                 test -n "$IMPORTED" || continue
                 case "$IMPORTED" in
