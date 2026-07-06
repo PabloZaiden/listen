@@ -186,8 +186,8 @@ function toPushPayload(notification: NotificationListItem, unreadCount: number):
       notificationId: notification.id,
       url,
     },
-    icon: "/web-app-manifest-192x192.png",
-    badge: "/web-app-manifest-192x192.png",
+    icon: "/webapp-icon.svg",
+    badge: "/webapp-icon.svg",
     tag: notification.id,
   };
 }

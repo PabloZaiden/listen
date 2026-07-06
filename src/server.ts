@@ -1,10 +1,8 @@
 import type { Server } from "bun";
-import webIndex from "./index.html";
 // @ts-expect-error Bun supports importing a TypeScript file as raw text with this import attribute.
 import appBadgeSource from "./web/app-badge.ts" with { type: "text" };
 // @ts-expect-error Bun supports importing a TypeScript file as raw text with this import attribute.
 import serviceWorkerSource from "./web/service-worker.ts" with { type: "text" };
-import siteManifestPath from "./site.webmanifest" with { type: "file" };
 import listenIcon192Path from "./web/icons/listen-192.png" with { type: "file" };
 import listenIcon512Path from "./web/icons/listen-512.png" with { type: "file" };
 import appleTouchIconPath from "./web/icons/apple-touch-icon.png" with { type: "file" };
@@ -30,23 +28,7 @@ type ListenRealtimeEvent = ResourceRealtimeEvent;
 const log = createLogger("server");
 const webhookLog = createLogger("api:webhooks");
 const SERVICE_WORKER_PATH = "/service-worker";
-const SITE_MANIFEST_PATH = "/site.webmanifest";
-const LEGACY_MANIFEST_PATH = "/manifest.webmanifest";
-const WEB_APP_ICON_192_PATH = "/web-app-manifest-192x192.png";
-const WEB_APP_ICON_512_PATH = "/web-app-manifest-512x512.png";
-const APPLE_TOUCH_ICON_PATH = "/apple-touch-icon.png";
-const STATIC_WEB_ICON_192_PATH = "/web/icons/listen-192.png";
-const STATIC_WEB_ICON_512_PATH = "/web/icons/listen-512.png";
-const STATIC_APPLE_TOUCH_ICON_PATH = "/web/icons/apple-touch-icon.png";
 const serviceWorkerScript = new Bun.Transpiler({ loader: "ts", target: "browser" }).transformSync(`${appBadgeSource}\n${serviceWorkerSource}`);
-const WEB_ICON_PATHS = new Map([
-  [WEB_APP_ICON_192_PATH, listenIcon192Path],
-  [WEB_APP_ICON_512_PATH, listenIcon512Path],
-  [APPLE_TOUCH_ICON_PATH, appleTouchIconPath],
-  [STATIC_WEB_ICON_192_PATH, listenIcon192Path],
-  [STATIC_WEB_ICON_512_PATH, listenIcon512Path],
-  [STATIC_APPLE_TOUCH_ICON_PATH, appleTouchIconPath],
-]);
 
 function serviceWorkerResponse(): Response {
   return new Response(serviceWorkerScript, {
@@ -56,19 +38,6 @@ function serviceWorkerResponse(): Response {
       "cache-control": "no-cache",
     },
   });
-}
-
-function manifestResponse(): Response {
-  return new Response(Bun.file(siteManifestPath), {
-    headers: {
-      "content-type": "application/manifest+json; charset=utf-8",
-    },
-  });
-}
-
-function iconResponse(pathname: string): Response | undefined {
-  const iconPath = WEB_ICON_PATHS.get(pathname);
-  return iconPath ? new Response(Bun.file(iconPath), { headers: { "content-type": "image/png" } }) : undefined;
 }
 
 function badRequest(message: string): Response {
@@ -352,7 +321,16 @@ export function getWebAppServer(): WebAppServer<ListenRealtimeEvent> {
   app = createWebAppServer<ListenRealtimeEvent>({
     appName: "Listen",
     envPrefix: "LISTEN",
-    index: webIndex,
+    web: {
+      icons: {
+        favicon: { src: listenIcon192Path, sizes: "192x192", type: "image/png" },
+        appleTouch: { src: appleTouchIconPath, sizes: "180x180", type: "image/png" },
+        manifest: [
+          { src: listenIcon192Path, sizes: "192x192", type: "image/png", purpose: "any maskable" },
+          { src: listenIcon512Path, sizes: "512x512", type: "image/png", purpose: "any maskable" },
+        ],
+      },
+    },
     version: LISTEN_VERSION,
     store,
     auth: { passkeys: true, apiKeys: true, deviceAuth: true },
@@ -361,14 +339,6 @@ export function getWebAppServer(): WebAppServer<ListenRealtimeEvent> {
     routes,
     publicRoutes: {
       [SERVICE_WORKER_PATH]: { GET: serviceWorkerResponse },
-      [SITE_MANIFEST_PATH]: { GET: manifestResponse },
-      [LEGACY_MANIFEST_PATH]: { GET: manifestResponse },
-      [WEB_APP_ICON_192_PATH]: { GET: () => iconResponse(WEB_APP_ICON_192_PATH) },
-      [WEB_APP_ICON_512_PATH]: { GET: () => iconResponse(WEB_APP_ICON_512_PATH) },
-      [APPLE_TOUCH_ICON_PATH]: { GET: () => iconResponse(APPLE_TOUCH_ICON_PATH) },
-      [STATIC_WEB_ICON_192_PATH]: { GET: () => iconResponse(STATIC_WEB_ICON_192_PATH) },
-      [STATIC_WEB_ICON_512_PATH]: { GET: () => iconResponse(STATIC_WEB_ICON_512_PATH) },
-      [STATIC_APPLE_TOUCH_ICON_PATH]: { GET: () => iconResponse(STATIC_APPLE_TOUCH_ICON_PATH) },
     },
   });
   return app;
@@ -390,8 +360,8 @@ export function createFetchHandler(_config: ServerConfig = readServerConfig()): 
   return (req, server) => getWebAppServer().handleRequest(req, server);
 }
 
-export function startServer(_config = readServerConfig()): Server<WebAppWebSocketData> {
-  const server = getWebAppServer().start();
+export async function startServer(_config = readServerConfig()): Promise<Server<WebAppWebSocketData>> {
+  const server = await getWebAppServer().start();
   log.info(`Listen server started on ${server.hostname}:${server.port}`);
   return server;
 }

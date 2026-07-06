@@ -42,10 +42,10 @@ jobs:
           curl -fsS -D /tmp/listen-dev-css-headers "http://127.0.0.1:3018/$CSS" >/dev/null
           grep -qi '^content-type: .*javascript' /tmp/listen-dev-js-headers
           grep -qi '^content-type: text/css' /tmp/listen-dev-css-headers
-          curl -fsS -D /tmp/listen-dev-manifest-headers http://127.0.0.1:3018/manifest.webmanifest >/dev/null
+          curl -fsS -D /tmp/listen-dev-manifest-headers http://127.0.0.1:3018/site.webmanifest >/dev/null
           curl -fsS -D /tmp/listen-dev-sw-headers http://127.0.0.1:3018/service-worker >/dev/null
-          curl -fsS -D /tmp/listen-dev-icon-headers http://127.0.0.1:3018/web-app-manifest-192x192.png >/dev/null
-          curl -fsS -D /tmp/listen-dev-apple-icon-headers http://127.0.0.1:3018/apple-touch-icon.png >/dev/null
+          curl -fsS -D /tmp/listen-dev-icon-headers http://127.0.0.1:3018/webapp-icon-1.png >/dev/null
+          curl -fsS -D /tmp/listen-dev-apple-icon-headers http://127.0.0.1:3018/webapp-apple-touch-icon.png >/dev/null
           grep -qi '^content-type: application/manifest+json' /tmp/listen-dev-manifest-headers
           grep -qi '^content-type: text/javascript' /tmp/listen-dev-sw-headers
           grep -qi '^content-type: image/png' /tmp/listen-dev-icon-headers
@@ -75,10 +75,10 @@ jobs:
           curl -fsS -D /tmp/listen-css-headers "http://127.0.0.1:3019/$CSS" >/dev/null
           grep -qi '^content-type: .*javascript' /tmp/listen-js-headers
           grep -qi '^content-type: text/css' /tmp/listen-css-headers
-          curl -fsS -D /tmp/listen-manifest-headers http://127.0.0.1:3019/manifest.webmanifest >/dev/null
+          curl -fsS -D /tmp/listen-manifest-headers http://127.0.0.1:3019/site.webmanifest >/dev/null
           curl -fsS -D /tmp/listen-sw-headers http://127.0.0.1:3019/service-worker >/dev/null
-          curl -fsS -D /tmp/listen-icon-headers http://127.0.0.1:3019/web-app-manifest-192x192.png >/dev/null
-          curl -fsS -D /tmp/listen-apple-icon-headers http://127.0.0.1:3019/apple-touch-icon.png >/dev/null
+          curl -fsS -D /tmp/listen-icon-headers http://127.0.0.1:3019/webapp-icon-1.png >/dev/null
+          curl -fsS -D /tmp/listen-apple-icon-headers http://127.0.0.1:3019/webapp-apple-touch-icon.png >/dev/null
           grep -qi '^content-type: application/manifest+json' /tmp/listen-manifest-headers
           grep -qi '^content-type: text/javascript' /tmp/listen-sw-headers
           grep -qi '^content-type: image/png' /tmp/listen-icon-headers
