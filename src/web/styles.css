@@ -224,6 +224,22 @@ a,
   will-change: transform;
 }
 
+.listen-swipe-row.is-open .listen-swipe-content {
+  margin-right: 9rem;
+  transition: none;
+}
+
+.listen-swipe-content .wapp-data-list-row {
+  min-width: 100%;
+  background: var(--wapp-surface);
+}
+
+.listen-swipe-content .wapp-data-list-row-main small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .listen-swipe-content.is-dragging {
   transition: none;
 }

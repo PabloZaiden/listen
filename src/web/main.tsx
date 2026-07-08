@@ -133,6 +133,7 @@ function NotificationTimestamp({ value }: { value: string }) {
 type NotificationListRowProps = {
   notification: NotificationListItem;
   sourceId?: string;
+  openRowId?: string;
   isOpen: boolean;
   setOpenRowId: (id: string | undefined) => void;
   markNotificationOpened: (notification: NotificationListItem) => Promise<void>;
@@ -149,6 +150,7 @@ type SwipeStart = {
 function NotificationListRow({
   notification,
   sourceId,
+  openRowId,
   isOpen,
   setOpenRowId,
   markNotificationOpened,
@@ -159,7 +161,8 @@ function NotificationListRow({
   const [dragOffset, setDragOffset] = useState<number>();
   const isUnread = !notification.openedAt;
   const markLabel = isUnread ? "Mark as read" : "Mark as unread";
-  const currentOffset = dragOffset ?? (isOpen ? -SWIPE_ACTION_WIDTH : 0);
+  const currentOffset = dragOffset ?? 0;
+  const isRevealingActions = isOpen || currentOffset < 0;
 
   function closeActions(): void {
     setDragOffset(undefined);
@@ -168,13 +171,17 @@ function NotificationListRow({
 
   function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>): void {
     if (event.pointerType === "mouse" && event.button !== 0) return;
+    const shouldSuppressTap = Boolean(openRowId && openRowId !== notification.id);
+    if (openRowId && openRowId !== notification.id) {
+      setOpenRowId(undefined);
+    }
     swipeStart.current = {
       x: event.clientX,
       y: event.clientY,
       offset: isOpen ? -SWIPE_ACTION_WIDTH : 0,
       intent: "pending",
     };
-    suppressClick.current = false;
+    suppressClick.current = shouldSuppressTap;
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
@@ -233,11 +240,6 @@ function NotificationListRow({
     requestDeleteNotification(notification);
   }
 
-  const actionItems: ActionMenuItem[] = [
-    { id: isUnread ? "mark-read" : "mark-unread", label: markLabel, onAction: () => void runMarkAction() },
-    { id: "delete", label: "Delete", destructive: true, onAction: runDeleteAction },
-  ];
-
   return (
     <div className={`listen-swipe-row ${isOpen ? "is-open" : ""}`}>
       <div className="listen-swipe-actions" aria-hidden={!isOpen}>
@@ -274,8 +276,7 @@ function NotificationListRow({
             </span>
           )}
           description={notification.shortDescription}
-          meta={isOpen ? undefined : <NotificationTimestamp value={notification.createdAt} />}
-          actions={isOpen ? undefined : <ActionMenu ariaLabel={`Actions for ${notification.title}`} items={actionItems} />}
+          meta={isRevealingActions ? undefined : <NotificationTimestamp value={notification.createdAt} />}
           onClick={handleRowClick}
         />
       </div>
@@ -333,6 +334,15 @@ function InboxView({ route, refreshSources, requestConfirm }: { route: WebAppRou
       await Promise.all([refreshSources(), refreshNotifications()]);
     },
   });
+  useEffect(() => {
+    if (!openRowId) return undefined;
+    function closeOpenRowFromDocumentPointer(event: PointerEvent): void {
+      if (event.target instanceof Element && event.target.closest(".listen-swipe-row")) return;
+      setOpenRowId(undefined);
+    }
+    document.addEventListener("pointerdown", closeOpenRowFromDocumentPointer);
+    return () => document.removeEventListener("pointerdown", closeOpenRowFromDocumentPointer);
+  }, [openRowId]);
   const notifications = result?.notifications ?? [];
 
   async function markNotificationOpened(notification: NotificationListItem): Promise<void> {
@@ -369,6 +379,7 @@ function InboxView({ route, refreshSources, requestConfirm }: { route: WebAppRou
                 key={notification.id}
                 notification={notification}
                 sourceId={sourceId}
+                openRowId={openRowId}
                 isOpen={openRowId === notification.id}
                 setOpenRowId={setOpenRowId}
                 markNotificationOpened={markNotificationOpened}
