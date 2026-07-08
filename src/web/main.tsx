@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { NotificationDetail, NotificationListItem, SourceResponse } from "@listen/contracts";
@@ -27,6 +27,7 @@ import "@pablozaiden/webapp/web/styles.css";
 import { LISTEN_VERSION } from "../version";
 import "./app-badge";
 import { BrowserPushSettings } from "./browserPushSettings";
+import { SWIPE_ACTION_WIDTH, clampSwipeOffset, detectSwipeIntent, shouldCancelSwipeClick, shouldRevealSwipeActions, type SwipeIntent } from "./swipe-actions";
 import "./styles.css";
 
 type ConfirmState = {
@@ -129,6 +130,160 @@ function NotificationTimestamp({ value }: { value: string }) {
   );
 }
 
+type NotificationListRowProps = {
+  notification: NotificationListItem;
+  sourceId?: string;
+  openRowId?: string;
+  isOpen: boolean;
+  setOpenRowId: (id: string | undefined) => void;
+  markNotificationOpened: (notification: NotificationListItem) => Promise<void>;
+  requestDeleteNotification: (notification: NotificationListItem) => void;
+};
+
+type SwipeStart = {
+  x: number;
+  y: number;
+  offset: number;
+  intent: SwipeIntent;
+};
+
+function NotificationListRow({
+  notification,
+  sourceId,
+  openRowId,
+  isOpen,
+  setOpenRowId,
+  markNotificationOpened,
+  requestDeleteNotification,
+}: NotificationListRowProps) {
+  const swipeStart = useRef<SwipeStart | undefined>(undefined);
+  const suppressClick = useRef(false);
+  const [dragOffset, setDragOffset] = useState<number>();
+  const isUnread = !notification.openedAt;
+  const markLabel = isUnread ? "Mark as read" : "Mark as unread";
+  const currentOffset = dragOffset ?? 0;
+  const isRevealingActions = isOpen || currentOffset < 0;
+
+  function closeActions(): void {
+    setDragOffset(undefined);
+    setOpenRowId(undefined);
+  }
+
+  function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>): void {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    const shouldSuppressTap = Boolean(openRowId && openRowId !== notification.id);
+    if (openRowId && openRowId !== notification.id) {
+      setOpenRowId(undefined);
+    }
+    swipeStart.current = {
+      x: event.clientX,
+      y: event.clientY,
+      offset: isOpen ? -SWIPE_ACTION_WIDTH : 0,
+      intent: "pending",
+    };
+    suppressClick.current = shouldSuppressTap;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>): void {
+    const start = swipeStart.current;
+    if (!start) return;
+    const deltaX = event.clientX - start.x;
+    const deltaY = event.clientY - start.y;
+    if (shouldCancelSwipeClick(deltaX, deltaY)) suppressClick.current = true;
+    if (start.intent === "pending") {
+      start.intent = detectSwipeIntent(deltaX, deltaY);
+    }
+    if (start.intent === "vertical") return;
+    if (start.intent !== "horizontal") return;
+    setDragOffset(clampSwipeOffset(start.offset + deltaX));
+  }
+
+  function handlePointerEnd(event: ReactPointerEvent<HTMLDivElement>): void {
+    const start = swipeStart.current;
+    swipeStart.current = undefined;
+    if (!start) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    const deltaX = event.clientX - start.x;
+    const deltaY = event.clientY - start.y;
+    if (shouldCancelSwipeClick(deltaX, deltaY)) suppressClick.current = true;
+    if (start.intent !== "horizontal") {
+      setDragOffset(undefined);
+      return;
+    }
+    const nextOffset = clampSwipeOffset(start.offset + deltaX);
+    setDragOffset(undefined);
+    setOpenRowId(shouldRevealSwipeActions(nextOffset) ? notification.id : undefined);
+  }
+
+  function handleRowClick(): void {
+    if (suppressClick.current) {
+      suppressClick.current = false;
+      return;
+    }
+    if (isOpen) {
+      closeActions();
+      return;
+    }
+    navigateTo(notificationRoute(notification.id, sourceId));
+  }
+
+  async function runMarkAction(): Promise<void> {
+    closeActions();
+    await markNotificationOpened(notification);
+  }
+
+  function runDeleteAction(): void {
+    closeActions();
+    requestDeleteNotification(notification);
+  }
+
+  return (
+    <div className={`listen-swipe-row ${isOpen ? "is-open" : ""}`}>
+      <div className="listen-swipe-actions" aria-hidden={!isOpen}>
+        <button
+          type="button"
+          className="listen-swipe-action"
+          tabIndex={isOpen ? 0 : -1}
+          onClick={() => void runMarkAction()}
+        >
+          {markLabel}
+        </button>
+        <button
+          type="button"
+          className="listen-swipe-action destructive"
+          tabIndex={isOpen ? 0 : -1}
+          onClick={runDeleteAction}
+        >
+          Delete
+        </button>
+      </div>
+      <div
+        className={`listen-swipe-content ${dragOffset === undefined ? "" : "is-dragging"}`}
+        style={{ transform: `translateX(${currentOffset}px)` }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerEnd}
+        onPointerCancel={handlePointerEnd}
+      >
+        <DataListRow
+          title={(
+            <span className={`listen-notification-title ${notification.openedAt ? "" : "unread"}`}>
+              {notification.openedAt ? null : <span className="listen-unread-dot" aria-hidden="true" />}
+              <span>{notification.title}</span>
+            </span>
+          )}
+          description={notification.shortDescription}
+          meta={isRevealingActions ? undefined : <NotificationTimestamp value={notification.createdAt} />}
+          onClick={handleRowClick}
+        />
+      </div>
+    </div>
+  );
+}
+
 function useSources(): [SourceResponse[], () => Promise<void>] {
   const [sources, setSources] = useState<SourceResponse[]>([]);
   const [authBlocked, setAuthBlocked] = useState(false);
@@ -169,34 +324,66 @@ function useNotifications(sourceId?: string): [ListNotificationsResponse | undef
   return [result, refresh];
 }
 
-function InboxView({ route, refreshSources }: { route: WebAppRoute; refreshSources: () => Promise<void> }) {
+function InboxView({ route, refreshSources, requestConfirm }: { route: WebAppRoute; refreshSources: () => Promise<void>; requestConfirm: (confirm: ConfirmState) => void }) {
   const sourceId = typeof route.sourceId === "string" ? route.sourceId : undefined;
   const [result, refreshNotifications] = useNotifications(sourceId);
+  const [openRowId, setOpenRowId] = useState<string>();
   useRealtimeRefresh({
     resources: ["notifications", "sources"],
     refresh: async () => {
       await Promise.all([refreshSources(), refreshNotifications()]);
     },
   });
+  useEffect(() => {
+    if (!openRowId) return undefined;
+    function closeOpenRowFromDocumentPointer(event: PointerEvent): void {
+      if (event.target instanceof Element && event.target.closest(".listen-swipe-row")) return;
+      setOpenRowId(undefined);
+    }
+    document.addEventListener("pointerdown", closeOpenRowFromDocumentPointer);
+    return () => document.removeEventListener("pointerdown", closeOpenRowFromDocumentPointer);
+  }, [openRowId]);
   const notifications = result?.notifications ?? [];
 
+  async function markNotificationOpened(notification: NotificationListItem): Promise<void> {
+    const action = notification.openedAt ? "unread" : "read";
+    await api(`/api/notifications/${encodeURIComponent(notification.id)}/${action}`, { method: "POST" });
+    setOpenRowId(undefined);
+    await refreshNotifications();
+  }
+
+  function requestDeleteNotification(notification: NotificationListItem): void {
+    requestConfirm({
+      title: "Delete notification?",
+      description: "This notification will be permanently removed.",
+      confirmLabel: "Delete notification",
+      danger: true,
+      action: async () => {
+        await api(`/api/notifications/${encodeURIComponent(notification.id)}`, { method: "DELETE" });
+        setOpenRowId(undefined);
+        await refreshNotifications();
+      },
+    });
+  }
+
   return (
-    <Page className="listen-stack">
+    <Page className="listen-stack" onPointerDown={(event) => {
+      if (!(event.target instanceof Element)) return;
+      if (!event.target.closest(".listen-swipe-row")) setOpenRowId(undefined);
+    }}>
       {notifications.length > 0 ? (
         <Panel>
           <DataList>
             {notifications.map((notification) => (
-              <DataListRow
+              <NotificationListRow
                 key={notification.id}
-                title={(
-                  <span className={`listen-notification-title ${notification.openedAt ? "" : "unread"}`}>
-                    {notification.openedAt ? null : <span className="listen-unread-dot" aria-hidden="true" />}
-                    <span>{notification.title}</span>
-                  </span>
-                )}
-                description={notification.shortDescription}
-                meta={<NotificationTimestamp value={notification.createdAt} />}
-                onClick={() => navigateTo(notificationRoute(notification.id, sourceId))}
+                notification={notification}
+                sourceId={sourceId}
+                openRowId={openRowId}
+                isOpen={openRowId === notification.id}
+                setOpenRowId={setOpenRowId}
+                markNotificationOpened={markNotificationOpened}
+                requestDeleteNotification={requestDeleteNotification}
               />
             ))}
           </DataList>
@@ -465,7 +652,7 @@ function ListenApp(): React.ReactElement {
   }, [sources]);
 
   const routes = useMemo(() => ({
-    inbox: (route: WebAppRoute) => <InboxView route={route} refreshSources={refreshSources} />,
+    inbox: (route: WebAppRoute) => <InboxView route={route} refreshSources={refreshSources} requestConfirm={setConfirmState} />,
     notification: (route: WebAppRoute) => <NotificationView route={route} />,
     sources: () => <SourcesView sources={sources} refreshSources={refreshSources} requestConfirm={setConfirmState} />,
   }), [refreshSources, sources]);
