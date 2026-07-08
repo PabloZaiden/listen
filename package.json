@@ -30,6 +30,6 @@
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "@types/web-push": "^3.6.4",
-    "typescript": "latest"
+    "typescript": "7.0.2"
   }
 }

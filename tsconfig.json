@@ -2,7 +2,6 @@
   "compilerOptions": {
     "allowImportingTsExtensions": true,
     "allowJs": false,
-    "baseUrl": ".",
     "composite": false,
     "declaration": false,
     "esModuleInterop": true,
@@ -18,8 +17,8 @@
     "noImplicitReturns": true,
     "noUncheckedIndexedAccess": true,
     "paths": {
-      "@listen/contracts": ["packages/contracts/src/index.ts"],
-      "@listen/shared": ["packages/shared/src/index.ts"]
+      "@listen/contracts": ["./packages/contracts/src/index.ts"],
+      "@listen/shared": ["./packages/shared/src/index.ts"]
     },
     "resolveJsonModule": true,
     "skipLibCheck": true,
