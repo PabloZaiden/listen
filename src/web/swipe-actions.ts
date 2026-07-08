@@ -23,3 +23,7 @@ export function shouldCancelSwipeClick(deltaX: number, deltaY: number): boolean 
 export function shouldRevealSwipeActions(offset: number, actionWidth = SWIPE_ACTION_WIDTH): boolean {
   return Math.abs(clampSwipeOffset(offset, actionWidth)) >= SWIPE_REVEAL_THRESHOLD;
 }
+
+export function shouldShowSwipeActionTray(isOpen: boolean, offset: number, actionWidth = SWIPE_ACTION_WIDTH): boolean {
+  return isOpen || clampSwipeOffset(offset, actionWidth) < 0;
+}

@@ -190,6 +190,15 @@ a,
   grid-template-columns: repeat(2, 72px);
   width: 144px;
   overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.listen-swipe-row.is-revealing .listen-swipe-actions {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
 }
 
 .listen-swipe-action {

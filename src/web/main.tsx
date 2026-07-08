@@ -27,7 +27,7 @@ import "@pablozaiden/webapp/web/styles.css";
 import { LISTEN_VERSION } from "../version";
 import "./app-badge";
 import { BrowserPushSettings } from "./browserPushSettings";
-import { SWIPE_ACTION_WIDTH, clampSwipeOffset, detectSwipeIntent, shouldCancelSwipeClick, shouldRevealSwipeActions, type SwipeIntent } from "./swipe-actions";
+import { SWIPE_ACTION_WIDTH, clampSwipeOffset, detectSwipeIntent, shouldCancelSwipeClick, shouldRevealSwipeActions, shouldShowSwipeActionTray, type SwipeIntent } from "./swipe-actions";
 import "./styles.css";
 
 type ConfirmState = {
@@ -162,7 +162,7 @@ function NotificationListRow({
   const isUnread = !notification.openedAt;
   const markLabel = isUnread ? "Mark as read" : "Mark as unread";
   const currentOffset = dragOffset ?? 0;
-  const isRevealingActions = isOpen || currentOffset < 0;
+  const isRevealingActions = shouldShowSwipeActionTray(isOpen, currentOffset);
 
   function closeActions(): void {
     setDragOffset(undefined);
@@ -241,7 +241,7 @@ function NotificationListRow({
   }
 
   return (
-    <div className={`listen-swipe-row ${isOpen ? "is-open" : ""}`}>
+    <div className={`listen-swipe-row ${isOpen ? "is-open" : ""} ${isRevealingActions ? "is-revealing" : ""}`}>
       <div className="listen-swipe-actions" aria-hidden={!isOpen}>
         <button
           type="button"

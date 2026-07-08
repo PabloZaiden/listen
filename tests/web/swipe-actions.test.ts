@@ -5,6 +5,7 @@ import {
   detectSwipeIntent,
   shouldCancelSwipeClick,
   shouldRevealSwipeActions,
+  shouldShowSwipeActionTray,
 } from "../../src/web/swipe-actions";
 
 describe("notification swipe actions", () => {
@@ -23,6 +24,13 @@ describe("notification swipe actions", () => {
   test("reveals actions only after a meaningful left swipe", () => {
     expect(shouldRevealSwipeActions(-24)).toBe(false);
     expect(shouldRevealSwipeActions(-80)).toBe(true);
+  });
+
+  test("shows the action tray only while dragged left or open", () => {
+    expect(shouldShowSwipeActionTray(false, 0)).toBe(false);
+    expect(shouldShowSwipeActionTray(false, 24)).toBe(false);
+    expect(shouldShowSwipeActionTray(false, -1)).toBe(true);
+    expect(shouldShowSwipeActionTray(true, 0)).toBe(true);
   });
 
   test("cancels row navigation after pointer movement", () => {
