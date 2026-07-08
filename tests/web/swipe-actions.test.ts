@@ -30,4 +30,9 @@ describe("notification swipe actions", () => {
     expect(shouldCancelSwipeClick(-12, 1)).toBe(true);
     expect(shouldCancelSwipeClick(1, 12)).toBe(true);
   });
+
+  test("cancels row navigation for vertical gestures that exceed the click threshold", () => {
+    expect(detectSwipeIntent(2, 20)).toBe("vertical");
+    expect(shouldCancelSwipeClick(2, 20)).toBe(true);
+  });
 });

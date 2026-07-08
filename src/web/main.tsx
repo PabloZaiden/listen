@@ -190,12 +190,12 @@ function NotificationListRow({
     if (!start) return;
     const deltaX = event.clientX - start.x;
     const deltaY = event.clientY - start.y;
+    if (shouldCancelSwipeClick(deltaX, deltaY)) suppressClick.current = true;
     if (start.intent === "pending") {
       start.intent = detectSwipeIntent(deltaX, deltaY);
     }
     if (start.intent === "vertical") return;
     if (start.intent !== "horizontal") return;
-    if (shouldCancelSwipeClick(deltaX, deltaY)) suppressClick.current = true;
     setDragOffset(clampSwipeOffset(start.offset + deltaX));
   }
 
@@ -208,12 +208,12 @@ function NotificationListRow({
     }
     const deltaX = event.clientX - start.x;
     const deltaY = event.clientY - start.y;
+    if (shouldCancelSwipeClick(deltaX, deltaY)) suppressClick.current = true;
     if (start.intent !== "horizontal") {
       setDragOffset(undefined);
       return;
     }
     const nextOffset = clampSwipeOffset(start.offset + deltaX);
-    if (shouldCancelSwipeClick(deltaX, deltaY)) suppressClick.current = true;
     setDragOffset(undefined);
     setOpenRowId(shouldRevealSwipeActions(nextOffset) ? notification.id : undefined);
   }

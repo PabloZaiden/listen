@@ -187,8 +187,8 @@ a,
   position: absolute;
   inset: 0 0 0 auto;
   display: grid;
-  grid-template-columns: repeat(2, 4.5rem);
-  width: 9rem;
+  grid-template-columns: repeat(2, 72px);
+  width: 144px;
   overflow: hidden;
 }
 
@@ -225,7 +225,7 @@ a,
 }
 
 .listen-swipe-row.is-open .listen-swipe-content {
-  margin-right: 9rem;
+  margin-right: 144px;
   transition: none;
 }
 
