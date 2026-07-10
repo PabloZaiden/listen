@@ -221,7 +221,7 @@ a,
 }
 
 .listen-swipe-action.destructive {
-  background: color-mix(in srgb, var(--wapp-danger), transparent 12%);
+  background: var(--wapp-danger-bg);
   color: white;
 }
 
