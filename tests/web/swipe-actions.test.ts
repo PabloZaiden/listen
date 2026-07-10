@@ -33,14 +33,20 @@ describe("notification swipe actions", () => {
     expect(shouldShowSwipeActionTray(true, 0)).toBe(true);
   });
 
-  test("cancels row navigation after pointer movement", () => {
+  test("cancels row navigation after horizontal pointer movement", () => {
     expect(shouldCancelSwipeClick(2, 3)).toBe(false);
     expect(shouldCancelSwipeClick(-12, 1)).toBe(true);
-    expect(shouldCancelSwipeClick(1, 12)).toBe(true);
+    expect(shouldCancelSwipeClick(12, 1)).toBe(true);
   });
 
-  test("cancels row navigation for vertical gestures that exceed the click threshold", () => {
+  test("does not cancel row navigation for vertical gestures", () => {
     expect(detectSwipeIntent(2, 20)).toBe("vertical");
-    expect(shouldCancelSwipeClick(2, 20)).toBe(true);
+    expect(shouldCancelSwipeClick(2, 20)).toBe(false);
+  });
+
+  test("keeps small iPad-like pointer jitter clickable", () => {
+    expect(detectSwipeIntent(7, 2)).toBe("pending");
+    expect(shouldCancelSwipeClick(7, 2)).toBe(false);
+    expect(shouldCancelSwipeClick(3, 9)).toBe(false);
   });
 });

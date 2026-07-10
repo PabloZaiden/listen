@@ -16,8 +16,8 @@ export function detectSwipeIntent(deltaX: number, deltaY: number): SwipeIntent {
   return absoluteX > absoluteY * 1.2 ? "horizontal" : "vertical";
 }
 
-export function shouldCancelSwipeClick(deltaX: number, deltaY: number): boolean {
-  return Math.abs(deltaX) > SWIPE_CLICK_CANCEL_THRESHOLD || Math.abs(deltaY) > SWIPE_CLICK_CANCEL_THRESHOLD;
+export function shouldCancelSwipeClick(deltaX: number, deltaY: number, intent: SwipeIntent = detectSwipeIntent(deltaX, deltaY)): boolean {
+  return intent === "horizontal" && Math.abs(deltaX) > SWIPE_CLICK_CANCEL_THRESHOLD;
 }
 
 export function shouldRevealSwipeActions(offset: number, actionWidth = SWIPE_ACTION_WIDTH): boolean {
