@@ -146,7 +146,7 @@ type SwipeStart = {
   offset: number;
   intent: SwipeIntent;
   capturedPointerId?: number;
-  suppressClick: boolean;
+  shouldSuppressClick: boolean;
 };
 
 function NotificationListRow({
@@ -188,7 +188,7 @@ function NotificationListRow({
       y: event.clientY,
       offset: isOpen ? -SWIPE_ACTION_WIDTH : 0,
       intent: "pending",
-      suppressClick: false,
+      shouldSuppressClick: false,
     };
     suppressClick.current = false;
   }
@@ -213,7 +213,7 @@ function NotificationListRow({
       event.currentTarget.setPointerCapture(event.pointerId);
       start.capturedPointerId = event.pointerId;
     }
-    if (shouldCancelSwipeClick(deltaX, deltaY, start.intent)) start.suppressClick = true;
+    if (shouldCancelSwipeClick(deltaX, deltaY, start.intent)) start.shouldSuppressClick = true;
     setDragOffset(clampSwipeOffset(start.offset + deltaX));
   }
 
@@ -229,11 +229,11 @@ function NotificationListRow({
       suppressClick.current = false;
       return;
     }
-    if (shouldCancelSwipeClick(deltaX, deltaY, start.intent)) start.suppressClick = true;
+    if (shouldCancelSwipeClick(deltaX, deltaY, start.intent)) start.shouldSuppressClick = true;
     const nextOffset = clampSwipeOffset(start.offset + deltaX);
     setDragOffset(undefined);
     setOpenRowId(shouldRevealSwipeActions(nextOffset) ? notification.id : undefined);
-    if (start.suppressClick) suppressNextClick();
+    if (start.shouldSuppressClick) suppressNextClick();
   }
 
   function handlePointerCancel(event: ReactPointerEvent<HTMLDivElement>): void {
