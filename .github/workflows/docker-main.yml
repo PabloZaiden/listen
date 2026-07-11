@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
       - name: Resolve build version
-        uses: pablozaiden/installer/.github/actions/resolve-version@3c54a204d9285a824c4905fd4a46886f2a2e9763 # installer #7
+        uses: pablozaiden/installer/.github/actions/resolve-version@d65a93c1af0d7ce62524d6ccdfee44d0f6ceac4e # installer #7
         with:
           mode: main
           github_token: ${{ github.token }}
