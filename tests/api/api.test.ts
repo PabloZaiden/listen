@@ -1,16 +1,16 @@
 import "./../setup";
 import { describe, expect, test } from "bun:test";
+import type { RuntimeConfig } from "@pablozaiden/webapp/server";
 import { BROWSER_PUSH_ENDPOINT_MAX_CHARS, WEBHOOK_JSON_BODY_MAX_BYTES } from "@listen/shared";
 import { createFetchHandler } from "../../src/server";
-import { readServerConfig, type ServerConfig } from "../../src/core/server-config";
 import { setBrowserPushSenderForTests } from "../../src/core/browser-push";
 import { createLogger, getLogLevel } from "../../src/core/logger";
 import { resetWebhookRateLimitForTests, setWebhookRateLimitOptionsForTests } from "../../src/core/webhook-rate-limit";
 import { getBrowserPushSubscriptionByEndpoint } from "../../src/persistence/browser-push";
 import { getDatabase } from "../../src/persistence/database";
 
-async function request(path: string, init?: RequestInit, config?: Partial<ServerConfig>): Promise<Response> {
-  const handler = createFetchHandler({ ...readServerConfig(), passkeyDisabled: true, sameOriginCheckDisabled: true, ...config });
+async function request(path: string, init?: RequestInit, config?: Partial<RuntimeConfig>): Promise<Response> {
+  const handler = createFetchHandler({ passkeyDisabled: true, sameOriginDisabled: true, ...config });
   const response = await handler(new Request(`http://localhost${path}`, init));
   if (!response) {
     throw new Error("Request did not return a response");
@@ -158,7 +158,7 @@ describe("API", () => {
       body: JSON.stringify({ level: "verbose" }),
     });
     expect(response.status).toBe(400);
-    expect(await json(response)).toMatchObject({ error: "invalid_log_level" });
+    expect(await json(response)).toMatchObject({ error: "invalid_request_body" });
   });
 
   test("fetch handler applies explicit log level config", async () => {
@@ -245,7 +245,7 @@ describe("API", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(await json(response)).toMatchObject({ error: "malformed_json" });
+    expect(await json(response)).toMatchObject({ error: "invalid_json" });
   });
 
   test("webhook global rate limit applies before source lookup", async () => {
@@ -557,7 +557,7 @@ describe("API", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(await json(response)).toMatchObject({ error: "invalid_request" });
+    expect(await json(response)).toMatchObject({ error: "invalid_request_body" });
   });
 
   test("webhook fanout sends compact browser push payloads to subscribed browsers", async () => {

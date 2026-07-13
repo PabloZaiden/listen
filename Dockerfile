@@ -19,6 +19,9 @@ ENV NODE_ENV=production
 ENV LISTEN_PORT=8080
 ENV LISTEN_HOST=0.0.0.0
 ENV LISTEN_DATA_DIR=/app/data
+ENV LISTEN_TRUST_PROXY=true
+ENV LISTEN_TRUST_PROXY_HEADERS=proto,host,prefix
+ENV LISTEN_TRUST_PROXY_CHAIN=first
 EXPOSE 8080
 USER listen
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

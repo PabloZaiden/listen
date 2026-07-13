@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import type { BrowserPushConfigResponse, BrowserPushStatusResponse, BrowserPushSubscription } from "@listen/contracts";
-import { appFetch, Button, FormGroup, FormSection } from "@pablozaiden/webapp/web";
+import { appJson, Button, FormGroup, FormSection } from "@pablozaiden/webapp/web";
 
 type BrowserPushUiState = "loading" | "unsupported" | "denied" | "unsubscribed" | "subscribed" | "error";
 
@@ -8,17 +8,6 @@ interface BrowserPushState {
   status: BrowserPushUiState;
   busy: boolean;
   message?: string;
-}
-
-async function apiJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await appFetch(url, {
-    ...init,
-    headers: {
-      "content-type": "application/json",
-      ...init?.headers,
-    },
-  });
-  return response.json() as Promise<T>;
 }
 
 function browserSupportsPush(): boolean {
@@ -76,11 +65,11 @@ async function registerServiceWorker(): Promise<ServiceWorkerRegistration> {
 }
 
 async function getApplicationServerKey(signal?: AbortSignal): Promise<Uint8Array<ArrayBuffer>> {
-  return base64UrlToUint8Array((await apiJson<BrowserPushConfigResponse>("/api/browser-push/config", { signal })).publicKey);
+  return base64UrlToUint8Array((await appJson<BrowserPushConfigResponse>("/api/browser-push/config", { signal })).publicKey);
 }
 
 async function saveSubscription(subscription: PushSubscription, signal?: AbortSignal): Promise<void> {
-  await apiJson<BrowserPushStatusResponse>("/api/browser-push/subscriptions", {
+  await appJson<BrowserPushStatusResponse>("/api/browser-push/subscriptions", {
     method: "POST",
     signal,
     body: JSON.stringify({ subscription: toBrowserPushSubscription(subscription) }),
@@ -88,7 +77,7 @@ async function saveSubscription(subscription: PushSubscription, signal?: AbortSi
 }
 
 async function deleteSavedSubscription(subscription: PushSubscription, signal?: AbortSignal): Promise<void> {
-  await apiJson<BrowserPushStatusResponse>("/api/browser-push/subscriptions", {
+  await appJson<BrowserPushStatusResponse>("/api/browser-push/subscriptions", {
     method: "DELETE",
     signal,
     body: JSON.stringify({ endpoint: toBrowserPushSubscription(subscription).endpoint }),
@@ -140,7 +129,7 @@ function useBrowserPushSettings(): [BrowserPushState, { subscribe: () => Promise
     }
 
     const payload = toBrowserPushSubscription(subscription);
-    const lookup = await apiJson<BrowserPushStatusResponse>("/api/browser-push/subscriptions/lookup", {
+    const lookup = await appJson<BrowserPushStatusResponse>("/api/browser-push/subscriptions/lookup", {
       method: "POST",
       signal,
       body: JSON.stringify({ endpoint: payload.endpoint }),
@@ -206,7 +195,7 @@ function useBrowserPushSettings(): [BrowserPushState, { subscribe: () => Promise
         return false;
       }
       const payload = toBrowserPushSubscription(subscription);
-      await apiJson<BrowserPushStatusResponse>("/api/browser-push/subscriptions", {
+      await appJson<BrowserPushStatusResponse>("/api/browser-push/subscriptions", {
         method: "DELETE",
         body: JSON.stringify({ endpoint: payload.endpoint }),
       });
