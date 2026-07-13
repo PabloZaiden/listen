@@ -18,7 +18,6 @@ import {
   type PersistedVapidKeys,
 } from "../persistence/browser-push";
 import { createLogger, errorLogFields } from "./logger";
-import { getRequestOrigin } from "./request-origin";
 
 const log = createLogger("browser-push");
 const PUSH_TTL_SECONDS = 60 * 60;
@@ -82,12 +81,11 @@ export function toVapidSubject(publicOrigin: string): string {
   }
 }
 
-export function getBrowserPushConfig(req: Request): BrowserPushConfigResponse {
+export function getBrowserPushConfig(publicOrigin: string): BrowserPushConfigResponse {
   const keys = getOrCreateVapidKeys();
-  const requestOrigin = getRequestOrigin(req).origin;
-  const vapidSubject = toVapidSubject(requestOrigin);
+  const vapidSubject = toVapidSubject(publicOrigin);
   webPush.setVapidDetails(vapidSubject, keys.publicKey, keys.privateKey);
-  log.trace("Browser push config requested", { requestOrigin, vapidSubject });
+  log.trace("Browser push config requested", { publicOrigin, vapidSubject });
   return { publicKey: keys.publicKey };
 }
 

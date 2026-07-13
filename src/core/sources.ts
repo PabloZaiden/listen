@@ -11,7 +11,6 @@ import {
 import { emit } from "./event-emitter";
 import { getUnreadNotificationCount } from "./notifications";
 import { generateWebhookToken, hashWebhookToken } from "./webhook-tokens";
-import { getRequestOrigin } from "./request-origin";
 import { createLogger } from "./logger";
 
 const log = createLogger("sources");
@@ -37,11 +36,11 @@ export function toSourceResponse(source: PersistedSource): SourceResponse {
   };
 }
 
-export function buildWebhookUrl(req: Request, sourceId: string, token: string): string {
-  return `${getRequestOrigin(req).origin}/api/webhooks/${sourceId}/${token}`;
+export function buildWebhookUrl(publicOrigin: string, sourceId: string, token: string): string {
+  return `${publicOrigin}/api/webhooks/${sourceId}/${token}`;
 }
 
-export async function createSource(name: string, req: Request, userId = ""): Promise<CreatedSource> {
+export async function createSource(name: string, publicOrigin: string, userId = ""): Promise<CreatedSource> {
   const token = generateWebhookToken();
   const source: PersistedSource = {
     id: crypto.randomUUID(),
@@ -58,7 +57,7 @@ export async function createSource(name: string, req: Request, userId = ""): Pro
   return {
     source: response,
     token,
-    webhookUrl: buildWebhookUrl(req, source.id, token),
+    webhookUrl: buildWebhookUrl(publicOrigin, source.id, token),
   };
 }
 
@@ -70,7 +69,7 @@ export function getSourceForWebhook(id: string): PersistedSource | undefined {
   return getSourceById(id);
 }
 
-export async function rotateSourceToken(id: string, req: Request, userId?: string): Promise<CreatedSource | undefined> {
+export async function rotateSourceToken(id: string, publicOrigin: string, userId?: string): Promise<CreatedSource | undefined> {
   const existing = getSourceById(id, userId);
   if (!existing) {
     log.warn("Source token rotation requested but source was not found", { sourceId: id });
@@ -88,7 +87,7 @@ export async function rotateSourceToken(id: string, req: Request, userId?: strin
   return {
     source: response,
     token,
-    webhookUrl: buildWebhookUrl(req, id, token),
+    webhookUrl: buildWebhookUrl(publicOrigin, id, token),
   };
 }
 

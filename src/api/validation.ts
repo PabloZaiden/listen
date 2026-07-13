@@ -1,22 +1,22 @@
-import type { ZodError, ZodSchema } from "zod";
+import { parseJson, errorResponse } from "@pablozaiden/webapp/server";
+import { webhookNotificationRequestSchema, type WebhookNotificationRequest } from "@listen/contracts";
 import { WEBHOOK_JSON_BODY_MAX_BYTES } from "@listen/shared";
 import { createLogger, errorLogFields } from "../core/logger";
-import { errorResponse } from "./helpers";
 
 const log = createLogger("api:validation");
 
-export class RequestValidationError extends Error {
+export class RequestBodyLimitError extends Error {
   public constructor(
     message: string,
     public readonly response: Response,
   ) {
     super(message);
-    this.name = "RequestValidationError";
+    this.name = "RequestBodyLimitError";
   }
 }
 
-function requestBodyTooLargeError(): RequestValidationError {
-  return new RequestValidationError("Request body too large", errorResponse(413, "request_body_too_large", "Request body is too large"));
+function requestBodyTooLargeError(): RequestBodyLimitError {
+  return new RequestBodyLimitError("Request body too large", errorResponse(413, "request_body_too_large", "Request body is too large"));
 }
 
 async function cancelOversizedBodyReader(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<void> {
@@ -27,7 +27,7 @@ async function cancelOversizedBodyReader(reader: ReadableStreamDefaultReader<Uin
   }
 }
 
-async function readJsonTextBody(req: Request, maxBytes: number): Promise<string> {
+async function readLimitedBody(req: Request, maxBytes: number): Promise<string> {
   if (!req.body) {
     return "";
   }
@@ -54,34 +54,16 @@ async function readJsonTextBody(req: Request, maxBytes: number): Promise<string>
   return body + decoder.decode();
 }
 
-export async function parseJsonBody(req: Request, maxBytes = WEBHOOK_JSON_BODY_MAX_BYTES): Promise<unknown> {
-  const contentType = req.headers.get("content-type") ?? "";
-  if (!contentType.toLowerCase().startsWith("application/json")) {
-    throw new RequestValidationError("Unsupported content type", errorResponse(415, "unsupported_content_type", "Content-Type must be application/json"));
-  }
+export async function parseWebhookNotification(req: Request, maxBytes = WEBHOOK_JSON_BODY_MAX_BYTES): Promise<WebhookNotificationRequest> {
   const contentLength = req.headers.get("content-length");
   if (contentLength && Number(contentLength) > maxBytes) {
     throw requestBodyTooLargeError();
   }
-  const body = await readJsonTextBody(req, maxBytes);
-  try {
-    return JSON.parse(body);
-  } catch {
-    throw new RequestValidationError("Malformed JSON", errorResponse(400, "malformed_json", "Request body must be valid JSON"));
-  }
-}
-
-export function parseWithSchema<T>(schema: ZodSchema<T>, value: unknown): T {
-  const parsed = schema.safeParse(value);
-  if (!parsed.success) {
-    throw new RequestValidationError("Validation failed", errorResponse(400, "validation_failed", "Request validation failed", formatZodError(parsed.error)));
-  }
-  return parsed.data;
-}
-
-function formatZodError(error: ZodError): unknown {
-  return error.issues.map((issue) => ({
-    path: issue.path.join("."),
-    message: issue.message,
-  }));
+  const body = await readLimitedBody(req, maxBytes);
+  const limitedRequest = new Request(req.url, {
+    method: req.method,
+    headers: req.headers,
+    body,
+  });
+  return parseJson(limitedRequest, webhookNotificationRequestSchema);
 }

@@ -23,13 +23,13 @@ listen serve
 LISTEN_HOST=0.0.0.0 LISTEN_PORT=3000 listen serve
 ```
 
-Native runs default to `127.0.0.1:3000`. Docker uses `0.0.0.0:8080` and stores data in `/app/data`.
+Native runs default to `localhost:3000`. Docker uses `0.0.0.0:8080` and stores data in `/app/data`.
 
 ## Browser notifications
 
 The Settings view includes per-browser Web Push subscriptions. Click "Enable on this browser" to allow Listen to send system notifications to the current browser profile. Repeat this on each desktop or mobile browser where you want notifications. If the browser is already subscribed, Settings shows a disable action for only that browser.
 
-The webapp framework serves Listen's PWA metadata, including `/site.webmanifest`, app icons, and the apple touch icon used by macOS Dock and iPhone Home Screen installs. Browser notifications use standards-based Web Push with a TypeScript service worker served directly at `/service-worker`. VAPID keys are generated once and persisted in the data directory. The public origin used for VAPID is derived from the same request origin logic used to generate webhook URLs. Local `http:` development uses a `mailto:` VAPID subject because Web Push requires VAPID subjects to be `https:` or `mailto:`.
+The webapp framework serves Listen's PWA metadata, including `/site.webmanifest`, app icons, and the apple touch icon used by macOS Dock and iPhone Home Screen installs. Browser notifications use standards-based Web Push with a TypeScript service worker served directly at `/service-worker`. VAPID keys are generated once and persisted in the data directory. The public origin used for VAPID and webhook URLs comes from `LISTEN_PUBLIC_BASE_URL` when configured, otherwise from the direct request URL. Local `http:` development uses a `mailto:` VAPID subject because Web Push requires VAPID subjects to be `https:` or `mailto:`.
 
 Safari support uses the modern Web Push API. On iPhone and iPad, install Listen to the Home Screen first, open it from the Home Screen web app, then subscribe from Settings. Production browser notifications require HTTPS; localhost can be used for development.
 
@@ -80,20 +80,38 @@ volumes:
   listen-data:
 ```
 
+The Docker image trusts the first proxy hop by default and uses `proto`, `host`,
+and `prefix` forwarded headers. Override these `LISTEN_TRUST_PROXY*` variables
+when the container is not behind a proxy or the deployment requires different
+forwarded-header handling.
+
 ## Reverse proxy and HTTPS/passkey notes
 
-Listen runs at the root of its own domain and does not support subpath mounting. If TLS terminates at a reverse proxy, preserve the public host and set `X-Forwarded-Proto: https` so passkey, webhook URL generation, and Web Push VAPID origins match the browser-visible URL.
+Listen runs at the root of its own domain and does not support subpath mounting. If TLS terminates at a reverse proxy, configure the framework's explicit proxy trust settings and public origin:
+
+```bash
+LISTEN_PUBLIC_BASE_URL=https://listen.example.com
+LISTEN_TRUST_PROXY=true
+LISTEN_TRUST_PROXY_HEADERS=proto,host
+LISTEN_TRUST_PROXY_CHAIN=first
+```
+
+The proxy must strip client-supplied forwarded headers before setting the trusted values. `LISTEN_PUBLIC_BASE_URL` keeps passkey, webhook URL generation, and Web Push VAPID origins aligned with the browser-visible URL.
 
 ## Environment variables
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `LISTEN_HOST` | `127.0.0.1` | Host/interface for `Bun.serve`. |
+| `LISTEN_HOST` | `localhost` | Host/interface for `Bun.serve`. |
 | `LISTEN_PORT` | `3000` | HTTP port, integer `0` to `65535`. |
 | `LISTEN_DATA_DIR` | `./data` | Directory containing `listen.db`. |
 | `LISTEN_DISABLE_PASSKEY` | unset | `true`, `1`, or `yes` bypasses passkey enforcement. |
 | `LISTEN_DISABLE_SAME_ORIGIN_CHECK` | unset | `true`, `1`, or `yes` disables same-origin protection. |
 | `LISTEN_LOG_LEVEL` | `info` | Server log level. |
+| `LISTEN_PUBLIC_BASE_URL` | unset | Public origin used for framework and Listen-generated URLs. |
+| `LISTEN_TRUST_PROXY` | `false` (Docker image: `true`) | Enables trusted forwarded request headers. |
+| `LISTEN_TRUST_PROXY_HEADERS` | `proto,host,prefix` when enabled | Forwarded headers to trust. Listen deployments should normally omit `prefix`. |
+| `LISTEN_TRUST_PROXY_CHAIN` | `first` | Which value to use from comma-separated forwarded header chains. |
 | `LISTEN_WEBHOOK_URL` | unset | CLI webhook override for `listen notify`. |
 
 ## Development

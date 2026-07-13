@@ -15,10 +15,10 @@ import {
   Panel,
   TextField,
   WebAppRoot,
+  appJson,
+  replaceWebAppRoute,
   renderWebApp,
   useRealtimeRefresh,
-  appFetch,
-  WebAppApiError,
   type ActionMenuItem,
   type SidebarNode,
   type WebAppRoute,
@@ -49,36 +49,6 @@ interface ListNotificationsResponse {
   };
 }
 
-interface WebAppConfigResponse {
-  passkeyAuth: {
-    enabled: boolean;
-    bootstrapRequired: boolean;
-    ownerPasskeySetupRequired: boolean;
-    passkeyRequired: boolean;
-    authenticated: boolean;
-  };
-}
-
-function needsAuthentication(config: WebAppConfigResponse): boolean {
-  return config.passkeyAuth.enabled
-    && (
-      config.passkeyAuth.bootstrapRequired
-      || config.passkeyAuth.ownerPasskeySetupRequired
-      || (config.passkeyAuth.passkeyRequired && !config.passkeyAuth.authenticated)
-    );
-}
-
-async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await appFetch(path, {
-    ...init,
-    headers: {
-      "content-type": "application/json",
-      ...init.headers,
-    },
-  });
-  return await response.json() as T;
-}
-
 type BadgeNavigator = Navigator & {
   setAppBadge?: (contents?: number) => Promise<void>;
   clearAppBadge?: () => Promise<void>;
@@ -92,20 +62,8 @@ function syncAppBadgeFromUnreadCount(unreadCount: number): void {
   void (globalThis as AppBadgeGlobal).listenUpdateAppBadge(navigator as BadgeNavigator, unreadCount, "notifications refresh");
 }
 
-function isAuthRequiredError(error: unknown): boolean {
-  return error instanceof WebAppApiError && error.status === 401 && error.error === "authentication_required";
-}
-
-function routeToHash(route: WebAppRoute): string {
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(route)) {
-    if (key !== "view" && value !== undefined) params.set(key, String(value));
-  }
-  return `#/${route.view}${params.size ? `?${params.toString()}` : ""}`;
-}
-
 function navigateTo(route: WebAppRoute): void {
-  window.location.hash = routeToHash(route);
+  replaceWebAppRoute(route);
 }
 
 function notificationRoute(id: string, sourceId?: string): WebAppRoute {
@@ -312,41 +270,38 @@ function NotificationListRow({
 
 function useSources(): [SourceResponse[], () => Promise<void>] {
   const [sources, setSources] = useState<SourceResponse[]>([]);
-  const [authBlocked, setAuthBlocked] = useState(false);
-  const refresh = useCallback(async () => {
-    try {
-      const config = await api<WebAppConfigResponse>("/api/config");
-      if (needsAuthentication(config)) {
-        setAuthBlocked(true);
-        return;
-      }
-      const response = await api<{ sources: SourceResponse[] }>("/api/sources");
-      setSources(response.sources);
-      setAuthBlocked(false);
-    } catch (error) {
-      if (!isAuthRequiredError(error)) throw error;
-      setAuthBlocked(true);
-    }
+  const refresh = useCallback(async (signal?: AbortSignal) => {
+    const response = await appJson<{ sources: SourceResponse[] }>("/api/sources", { signal });
+    if (signal?.aborted) return;
+    setSources(response.sources);
   }, []);
-  useEffect(() => void refresh().catch((error) => console.error(error)), [refresh]);
   useEffect(() => {
-    if (!authBlocked) return undefined;
-    const timer = setInterval(() => void refresh().catch((error) => console.error(error)), 1_000);
-    return () => clearInterval(timer);
-  }, [authBlocked, refresh]);
+    const controller = new AbortController();
+    void refresh(controller.signal).catch((error) => {
+      if (!controller.signal.aborted) console.error("Could not load sources", error);
+    });
+    return () => controller.abort();
+  }, [refresh]);
   return [sources, refresh];
 }
 
 function useNotifications(sourceId?: string): [ListNotificationsResponse | undefined, () => Promise<void>] {
   const [result, setResult] = useState<ListNotificationsResponse>();
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (signal?: AbortSignal) => {
     const params = new URLSearchParams({ limit: "50", offset: "0" });
     if (sourceId) params.set("sourceId", sourceId);
-    const response = await api<ListNotificationsResponse>(`/api/notifications?${params}`);
+    const response = await appJson<ListNotificationsResponse>(`/api/notifications?${params}`, { signal });
+    if (signal?.aborted) return;
     setResult(response);
     syncAppBadgeFromUnreadCount(response.unreadCount);
   }, [sourceId]);
-  useEffect(() => void refresh().catch((error) => console.error("Could not load notifications", error)), [refresh]);
+  useEffect(() => {
+    const controller = new AbortController();
+    void refresh(controller.signal).catch((error) => {
+      if (!controller.signal.aborted) console.error("Could not load notifications", error);
+    });
+    return () => controller.abort();
+  }, [refresh]);
   return [result, refresh];
 }
 
@@ -373,7 +328,7 @@ function InboxView({ route, refreshSources, requestConfirm }: { route: WebAppRou
 
   async function markNotificationOpened(notification: NotificationListItem): Promise<void> {
     const action = notification.openedAt ? "unread" : "read";
-    await api(`/api/notifications/${encodeURIComponent(notification.id)}/${action}`, { method: "POST" });
+    await appJson(`/api/notifications/${encodeURIComponent(notification.id)}/${action}`, { method: "POST" });
     setOpenRowId(undefined);
     await refreshNotifications();
   }
@@ -385,7 +340,7 @@ function InboxView({ route, refreshSources, requestConfirm }: { route: WebAppRou
       confirmLabel: "Delete notification",
       danger: true,
       action: async () => {
-        await api(`/api/notifications/${encodeURIComponent(notification.id)}`, { method: "DELETE" });
+        await appJson(`/api/notifications/${encodeURIComponent(notification.id)}`, { method: "DELETE" });
         setOpenRowId(undefined);
         await refreshNotifications();
       },
@@ -428,7 +383,7 @@ function NotificationView({ route }: { route: WebAppRoute }) {
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
     if (!id) return;
-    const response = await api<{ notification: NotificationDetail }>(`/api/notifications/${encodeURIComponent(id)}`, { signal });
+    const response = await appJson<{ notification: NotificationDetail }>(`/api/notifications/${encodeURIComponent(id)}`, { signal });
     if (signal?.aborted) return;
     setDetail(response.notification);
     setError(undefined);
@@ -515,7 +470,7 @@ function SourcesView({ sources, refreshSources, requestConfirm }: { sources: Sou
     setBusy(true);
     setError(undefined);
     try {
-      const response = await api<{ source: SourceResponse; webhookUrl: string }>("/api/sources", { method: "POST", body: JSON.stringify({ name: trimmed }) });
+      const response = await appJson<{ source: SourceResponse; webhookUrl: string }>("/api/sources", { method: "POST", body: JSON.stringify({ name: trimmed }) });
       setWebhookUrl(response.webhookUrl);
       setName("");
       await refreshSources();
@@ -533,7 +488,7 @@ function SourcesView({ sources, refreshSources, requestConfirm }: { sources: Sou
       confirmLabel: "Rotate token",
       danger: true,
       action: async () => {
-        const response = await api<{ webhookUrl: string }>(`/api/sources/${encodeURIComponent(source.id)}/token/rotate`, { method: "POST" });
+        const response = await appJson<{ webhookUrl: string }>(`/api/sources/${encodeURIComponent(source.id)}/token/rotate`, { method: "POST" });
         setWebhookUrl(response.webhookUrl);
         await refreshSources();
       },
@@ -547,7 +502,7 @@ function SourcesView({ sources, refreshSources, requestConfirm }: { sources: Sou
       confirmLabel: "Delete source",
       danger: true,
       action: async () => {
-        await api(`/api/sources/${encodeURIComponent(source.id)}`, { method: "DELETE" });
+        await appJson(`/api/sources/${encodeURIComponent(source.id)}`, { method: "DELETE" });
         await refreshSources();
       },
     });
@@ -602,7 +557,6 @@ function SourcesView({ sources, refreshSources, requestConfirm }: { sources: Sou
 function ListenApp(): React.ReactElement {
   const [sources, refreshSources] = useSources();
   const [confirmState, setConfirmState] = useState<ConfirmState>();
-  const [confirming, setConfirming] = useState(false);
 
   const sidebarNodes = useCallback((): SidebarNode[] => [
       { type: "item", id: "inbox", title: "Inbox", route: { view: "inbox" } },
@@ -620,7 +574,7 @@ function ListenApp(): React.ReactElement {
   async function markAllAsRead(sourceId: string | undefined): Promise<void> {
     const params = new URLSearchParams();
     if (sourceId) params.set("sourceId", sourceId);
-    await api(`/api/notifications/read${params.size ? `?${params}` : ""}`, { method: "POST" });
+    await appJson(`/api/notifications/read${params.size ? `?${params}` : ""}`, { method: "POST" });
   }
 
   function deleteAll(sourceId: string | undefined): void {
@@ -633,7 +587,7 @@ function ListenApp(): React.ReactElement {
       action: async () => {
         const params = new URLSearchParams();
         if (sourceId) params.set("sourceId", sourceId);
-        await api(`/api/notifications${params.size ? `?${params}` : ""}`, { method: "DELETE" });
+        await appJson(`/api/notifications${params.size ? `?${params}` : ""}`, { method: "DELETE" });
       },
     });
   }
@@ -641,7 +595,7 @@ function ListenApp(): React.ReactElement {
   async function markNotificationUnread(route: WebAppRoute): Promise<void> {
     const id = typeof route.id === "string" ? route.id : "";
     if (!id) return;
-    await api(`/api/notifications/${encodeURIComponent(id)}/unread`, { method: "POST" });
+    await appJson(`/api/notifications/${encodeURIComponent(id)}/unread`, { method: "POST" });
     navigateTo(sourceFilterRoute(sourceIdFromRoute(route)));
   }
 
@@ -654,7 +608,7 @@ function ListenApp(): React.ReactElement {
       confirmLabel: "Delete notification",
       danger: true,
       action: async () => {
-        await api(`/api/notifications/${encodeURIComponent(id)}`, { method: "DELETE" });
+        await appJson(`/api/notifications/${encodeURIComponent(id)}`, { method: "DELETE" });
         navigateTo(sourceFilterRoute(sourceIdFromRoute(route)));
       },
     });
@@ -685,13 +639,8 @@ function ListenApp(): React.ReactElement {
 
   async function runConfirm(): Promise<void> {
     if (!confirmState) return;
-    setConfirming(true);
-    try {
-      await confirmState.action();
-      setConfirmState(undefined);
-    } finally {
-      setConfirming(false);
-    }
+    await confirmState.action();
+    setConfirmState(undefined);
   }
 
   return (
