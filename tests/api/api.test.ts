@@ -168,6 +168,56 @@ describe("API", () => {
     expect(await json<{ logLevel: { level: string; fromEnv: boolean } }>(response)).toMatchObject({ logLevel: { level: "debug", fromEnv: true } });
   });
 
+  test("fetch handler rejects an invalid public base URL during setup", () => {
+    expect(() => createFetchHandler({ publicBaseUrl: "not-a-url" })).toThrow("LISTEN_PUBLIC_BASE_URL must be a valid absolute http(s) URL");
+  });
+
+  test("fetch handler runtime overrides stay isolated without mutating the environment", async () => {
+    const envNames = [
+      "LISTEN_HOST",
+      "LISTEN_PORT",
+      "LISTEN_DATA_DIR",
+      "LISTEN_DISABLE_PASSKEY",
+      "LISTEN_DISABLE_SAME_ORIGIN_CHECK",
+      "LISTEN_LOG_LEVEL",
+      "LISTEN_PUBLIC_BASE_URL",
+      "LISTEN_TRUST_PROXY",
+      "LISTEN_TRUST_PROXY_HEADERS",
+      "LISTEN_TRUST_PROXY_CHAIN",
+    ];
+    const initialEnvironment = new Map(envNames.map((name) => [name, process.env[name]]));
+    const firstHandler = createFetchHandler({
+      host: "127.0.0.1",
+      port: 3101,
+      logLevel: "debug",
+      publicBaseUrl: "https://first.example",
+      trustProxy: { enabled: true, headers: ["proto"], chain: "first" },
+    });
+    const secondHandler = createFetchHandler({
+      host: "127.0.0.1",
+      port: 3102,
+      logLevel: "warn",
+      publicBaseUrl: "https://second.example",
+      trustProxy: { enabled: true, headers: ["host"], chain: "last" },
+    });
+
+    for (const name of envNames) {
+      expect(process.env[name]).toBe(initialEnvironment.get(name));
+    }
+
+    const sourceRequest = (name: string): Request => new Request("http://localhost/api/sources", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    const firstResponse = await firstHandler(sourceRequest("First"));
+    const secondResponse = await secondHandler(sourceRequest("Second"));
+    expect(firstResponse?.status).toBe(201);
+    expect(secondResponse?.status).toBe(201);
+    expect((await json<{ webhookUrl: string }>(firstResponse!)).webhookUrl).toContain("https://first.example/api/webhooks/");
+    expect((await json<{ webhookUrl: string }>(secondResponse!)).webhookUrl).toContain("https://second.example/api/webhooks/");
+  });
+
   test("source creation returns webhook URL only from create and list omits it", async () => {
     const created = await createSource();
     expect(created.webhookUrl).toContain(`/api/webhooks/${created.source.id}/`);

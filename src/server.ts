@@ -51,12 +51,25 @@ function parseOffset(raw: string | null): number {
   return Number.isInteger(value) && value >= 0 ? value : 0;
 }
 
-function publicOriginForRequest(req: Request): string {
-  const publicBaseUrl = getWebAppServer().config.publicBaseUrl;
+function validatePublicBaseUrl(publicBaseUrl: string | undefined): void {
+  if (!publicBaseUrl) return;
+  try {
+    const parsed = new URL(publicBaseUrl);
+    if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || parsed.username || parsed.password || parsed.origin === "null") {
+      throw new Error();
+    }
+  } catch {
+    throw new Error("LISTEN_PUBLIC_BASE_URL must be a valid absolute http(s) URL");
+  }
+}
+
+function publicOriginForRequest(req: Request, runtimeConfig: RuntimeConfig): string {
+  const publicBaseUrl = runtimeConfig.publicBaseUrl;
   return publicBaseUrl ? new URL(publicBaseUrl).origin : new URL(req.url).origin;
 }
 
-const routes = defineRoutes<ListenRealtimeEvent>({
+function createRoutes(runtimeConfig: RuntimeConfig) {
+  return defineRoutes<ListenRealtimeEvent>({
   "/api/sources": {
     auth: "user",
     requestSchema: createSourceRequestSchema,
@@ -67,7 +80,7 @@ const routes = defineRoutes<ListenRealtimeEvent>({
     async POST(req, ctx) {
       const user = ctx.requireUser();
       const body = await parseJson(req, createSourceRequestSchema);
-      const source = await createSource(body.name, publicOriginForRequest(req), user.id);
+      const source = await createSource(body.name, publicOriginForRequest(req, runtimeConfig), user.id);
       ctx.userRealtime.publishEntityChanged("sources", source.source.id, { payload: source.source });
       return jsonResponse(source, { status: 201 });
     },
@@ -76,7 +89,7 @@ const routes = defineRoutes<ListenRealtimeEvent>({
     auth: "user",
     async POST(req, ctx) {
       const user = ctx.requireUser();
-      const source = await rotateSourceToken(ctx.params.id ?? "", publicOriginForRequest(req), user.id);
+      const source = await rotateSourceToken(ctx.params.id ?? "", publicOriginForRequest(req, runtimeConfig), user.id);
       if (!source) return notFound();
       ctx.userRealtime.publishEntityChanged("sources", source.source.id, { payload: source.source });
       return jsonResponse(source);
@@ -177,7 +190,7 @@ const routes = defineRoutes<ListenRealtimeEvent>({
     auth: "user",
     GET: (req, ctx) => {
       ctx.requireUser();
-      return jsonResponse(getBrowserPushConfig(publicOriginForRequest(req)));
+      return jsonResponse(getBrowserPushConfig(publicOriginForRequest(req, runtimeConfig)));
     },
   },
   "/api/browser-push/subscriptions": {
@@ -239,24 +252,31 @@ const routes = defineRoutes<ListenRealtimeEvent>({
         }
         throw error;
       }
-      const notification = createNotificationFromWebhook(body, source, { publicOrigin: publicOriginForRequest(req) });
+      const notification = createNotificationFromWebhook(body, source, { publicOrigin: publicOriginForRequest(req, runtimeConfig) });
       markSourceUsed(source.id);
       ctx.realtime.publishEntityChanged("notifications", notification.id, { target: { userId: source.userId }, payload: notification });
       ctx.realtime.publishEntityChanged("sources", source.id, { target: { userId: source.userId } });
       return jsonResponse({ id: notification.id }, { status: 201 });
     },
   },
-});
+  });
+}
 
 let app: WebAppServer<ListenRealtimeEvent> | undefined;
 
 export function getWebAppServer(): WebAppServer<ListenRealtimeEvent> {
   if (app) return app;
   const runtimeConfig = readRuntimeConfig({ appName: "Listen", envPrefix: "LISTEN" });
+  app = createListenWebAppServer(runtimeConfig);
+  return app;
+}
+
+function createListenWebAppServer(runtimeConfig: RuntimeConfig): WebAppServer<ListenRealtimeEvent> {
+  validatePublicBaseUrl(runtimeConfig.publicBaseUrl);
   const dataDir = runtimeConfig.dataDir;
   initializeDatabase(dataDir);
   const store = sqliteWebAppStore({ dataDir, fileName: "listen.db" });
-  app = createWebAppServer<ListenRealtimeEvent>({
+  const server = createWebAppServer<ListenRealtimeEvent>({
     appName: "Listen",
     envPrefix: "LISTEN",
     web: {
@@ -274,38 +294,37 @@ export function getWebAppServer(): WebAppServer<ListenRealtimeEvent> {
     auth: { passkeys: true, apiKeys: true, deviceAuth: true },
     logLevel: { onChange: setLogLevel },
     realtime: { path: "/api/ws" },
-    routes,
+    routes: createRoutes(runtimeConfig),
     publicRoutes: {
       [SERVICE_WORKER_PATH]: { GET: serviceWorkerResponse },
     },
   });
-  return app;
+  Object.assign(server.config, runtimeConfig);
+  if (runtimeConfig.logLevelFromEnv) {
+    setLogLevel(runtimeConfig.logLevel);
+  }
+  return server;
 }
 
-function applyRuntimeConfigOverrides(overrides: Partial<RuntimeConfig>): void {
-  if (overrides.host !== undefined) process.env["LISTEN_HOST"] = overrides.host;
-  if (overrides.port !== undefined) process.env["LISTEN_PORT"] = String(overrides.port);
-  if (overrides.dataDir !== undefined) process.env["LISTEN_DATA_DIR"] = overrides.dataDir;
-  if (overrides.passkeyDisabled !== undefined) process.env["LISTEN_DISABLE_PASSKEY"] = String(overrides.passkeyDisabled);
-  if (overrides.sameOriginDisabled !== undefined) process.env["LISTEN_DISABLE_SAME_ORIGIN_CHECK"] = String(overrides.sameOriginDisabled);
-  if (overrides.logLevel !== undefined) {
-    process.env["LISTEN_LOG_LEVEL"] = overrides.logLevel;
-    setLogLevel(overrides.logLevel);
-  }
-  if (overrides.publicBaseUrl !== undefined) {
-    process.env["LISTEN_PUBLIC_BASE_URL"] = overrides.publicBaseUrl ?? "";
-  }
-  if (overrides.trustProxy !== undefined) {
-    process.env["LISTEN_TRUST_PROXY"] = String(overrides.trustProxy.enabled);
-    process.env["LISTEN_TRUST_PROXY_HEADERS"] = overrides.trustProxy.headers.join(",");
-    process.env["LISTEN_TRUST_PROXY_CHAIN"] = overrides.trustProxy.chain;
-  }
+function applyRuntimeConfigOverrides(config: RuntimeConfig, overrides: Partial<RuntimeConfig>): RuntimeConfig {
+  return {
+    ...config,
+    host: overrides.host ?? config.host,
+    port: overrides.port ?? config.port,
+    dataDir: overrides.dataDir ?? config.dataDir,
+    passkeyDisabled: overrides.passkeyDisabled ?? config.passkeyDisabled,
+    sameOriginDisabled: overrides.sameOriginDisabled ?? config.sameOriginDisabled,
+    logLevel: overrides.logLevel ?? config.logLevel,
+    logLevelFromEnv: overrides.logLevel === undefined ? config.logLevelFromEnv : true,
+    publicBaseUrl: overrides.publicBaseUrl === undefined ? config.publicBaseUrl : overrides.publicBaseUrl,
+    trustProxy: overrides.trustProxy ?? config.trustProxy,
+  };
 }
 
 export function createFetchHandler(overrides: Partial<RuntimeConfig> = {}): (req: Request, server?: Server<WebAppWebSocketData>) => Promise<Response | undefined> {
-  applyRuntimeConfigOverrides(overrides);
-  app = undefined;
-  return (req, server) => getWebAppServer().handleRequest(req, server);
+  const runtimeConfig = applyRuntimeConfigOverrides(readRuntimeConfig({ appName: "Listen", envPrefix: "LISTEN" }), overrides);
+  const handlerApp = createListenWebAppServer(runtimeConfig);
+  return (req, server) => handlerApp.handleRequest(req, server);
 }
 
 export async function startServer(): Promise<Server<WebAppWebSocketData>> {
