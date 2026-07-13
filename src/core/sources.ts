@@ -36,11 +36,11 @@ export function toSourceResponse(source: PersistedSource): SourceResponse {
   };
 }
 
-export function buildWebhookUrl(publicOrigin: string, sourceId: string, token: string): string {
-  return `${publicOrigin}/api/webhooks/${sourceId}/${token}`;
+export function buildWebhookUrl(publicBaseUrl: string, sourceId: string, token: string): string {
+  return `${publicBaseUrl}/api/webhooks/${sourceId}/${token}`;
 }
 
-export async function createSource(name: string, publicOrigin: string, userId = ""): Promise<CreatedSource> {
+export async function createSource(name: string, publicBaseUrl: string, userId = ""): Promise<CreatedSource> {
   const token = generateWebhookToken();
   const source: PersistedSource = {
     id: crypto.randomUUID(),
@@ -57,7 +57,7 @@ export async function createSource(name: string, publicOrigin: string, userId = 
   return {
     source: response,
     token,
-    webhookUrl: buildWebhookUrl(publicOrigin, source.id, token),
+    webhookUrl: buildWebhookUrl(publicBaseUrl, source.id, token),
   };
 }
 
@@ -69,7 +69,7 @@ export function getSourceForWebhook(id: string): PersistedSource | undefined {
   return getSourceById(id);
 }
 
-export async function rotateSourceToken(id: string, publicOrigin: string, userId?: string): Promise<CreatedSource | undefined> {
+export async function rotateSourceToken(id: string, publicBaseUrl: string, userId?: string): Promise<CreatedSource | undefined> {
   const existing = getSourceById(id, userId);
   if (!existing) {
     log.warn("Source token rotation requested but source was not found", { sourceId: id });
@@ -87,7 +87,7 @@ export async function rotateSourceToken(id: string, publicOrigin: string, userId
   return {
     source: response,
     token,
-    webhookUrl: buildWebhookUrl(publicOrigin, id, token),
+    webhookUrl: buildWebhookUrl(publicBaseUrl, id, token),
   };
 }
 
