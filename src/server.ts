@@ -6,7 +6,7 @@ import serviceWorkerSource from "./web/service-worker.ts" with { type: "text" };
 import listenIcon192Path from "./web/icons/listen-192.png" with { type: "file" };
 import listenIcon512Path from "./web/icons/listen-512.png" with { type: "file" };
 import appleTouchIconPath from "./web/icons/apple-touch-icon.png" with { type: "file" };
-import { createWebAppServer, defineRoutes, errorResponse, jsonResponse, notFound, parseJson, readRuntimeConfig, sqliteWebAppStore, successResponse, type ResourceRealtimeEvent, type RuntimeConfig, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
+import { createWebAppServer, defineRoutes, errorResponse, getRequestBaseUrl, getRequestOriginInfo, jsonResponse, notFound, parseJson, readRuntimeConfig, sqliteWebAppStore, successResponse, type ResourceRealtimeEvent, type RuntimeConfig, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
 import { browserPushEndpointRequestSchema, browserPushSubscribeRequestSchema, createSourceRequestSchema, type WebhookNotificationRequest, webhookNotificationRequestSchema } from "@listen/contracts";
 import { createLogger, setLogLevel } from "./core/logger";
 import { verifyWebhookToken } from "./core/webhook-tokens";
@@ -51,23 +51,6 @@ function parseOffset(raw: string | null): number {
   return Number.isInteger(value) && value >= 0 ? value : 0;
 }
 
-function validatePublicBaseUrl(publicBaseUrl: string | undefined): void {
-  if (!publicBaseUrl) return;
-  try {
-    const parsed = new URL(publicBaseUrl);
-    if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || parsed.username || parsed.password || parsed.origin === "null") {
-      throw new Error();
-    }
-  } catch {
-    throw new Error("LISTEN_PUBLIC_BASE_URL must be a valid absolute http(s) URL");
-  }
-}
-
-function publicOriginForRequest(req: Request, runtimeConfig: RuntimeConfig): string {
-  const publicBaseUrl = runtimeConfig.publicBaseUrl;
-  return publicBaseUrl ? new URL(publicBaseUrl).origin : new URL(req.url).origin;
-}
-
 function createRoutes(runtimeConfig: RuntimeConfig) {
   return defineRoutes<ListenRealtimeEvent>({
   "/api/sources": {
@@ -80,7 +63,7 @@ function createRoutes(runtimeConfig: RuntimeConfig) {
     async POST(req, ctx) {
       const user = ctx.requireUser();
       const body = await parseJson(req, createSourceRequestSchema);
-      const source = await createSource(body.name, publicOriginForRequest(req, runtimeConfig), user.id);
+      const source = await createSource(body.name, getRequestBaseUrl(req, runtimeConfig), user.id);
       ctx.userRealtime.publishEntityChanged("sources", source.source.id, { payload: source.source });
       return jsonResponse(source, { status: 201 });
     },
@@ -89,7 +72,7 @@ function createRoutes(runtimeConfig: RuntimeConfig) {
     auth: "user",
     async POST(req, ctx) {
       const user = ctx.requireUser();
-      const source = await rotateSourceToken(ctx.params.id ?? "", publicOriginForRequest(req, runtimeConfig), user.id);
+      const source = await rotateSourceToken(ctx.params.id ?? "", getRequestBaseUrl(req, runtimeConfig), user.id);
       if (!source) return notFound();
       ctx.userRealtime.publishEntityChanged("sources", source.source.id, { payload: source.source });
       return jsonResponse(source);
@@ -190,7 +173,7 @@ function createRoutes(runtimeConfig: RuntimeConfig) {
     auth: "user",
     GET: (req, ctx) => {
       ctx.requireUser();
-      return jsonResponse(getBrowserPushConfig(publicOriginForRequest(req, runtimeConfig)));
+      return jsonResponse(getBrowserPushConfig(getRequestOriginInfo(req, runtimeConfig).origin));
     },
   },
   "/api/browser-push/subscriptions": {
@@ -252,7 +235,7 @@ function createRoutes(runtimeConfig: RuntimeConfig) {
         }
         throw error;
       }
-      const notification = createNotificationFromWebhook(body, source, { publicOrigin: publicOriginForRequest(req, runtimeConfig) });
+      const notification = createNotificationFromWebhook(body, source, { publicOrigin: getRequestOriginInfo(req, runtimeConfig).origin });
       markSourceUsed(source.id);
       ctx.realtime.publishEntityChanged("notifications", notification.id, { target: { userId: source.userId }, payload: notification });
       ctx.realtime.publishEntityChanged("sources", source.id, { target: { userId: source.userId } });
@@ -272,7 +255,6 @@ export function getWebAppServer(): WebAppServer<ListenRealtimeEvent> {
 }
 
 function createListenWebAppServer(runtimeConfig: RuntimeConfig): WebAppServer<ListenRealtimeEvent> {
-  validatePublicBaseUrl(runtimeConfig.publicBaseUrl);
   const dataDir = runtimeConfig.dataDir;
   initializeDatabase(dataDir);
   const store = sqliteWebAppStore({ dataDir, fileName: "listen.db" });

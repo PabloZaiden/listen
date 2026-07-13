@@ -168,10 +168,6 @@ describe("API", () => {
     expect(await json<{ logLevel: { level: string; fromEnv: boolean } }>(response)).toMatchObject({ logLevel: { level: "debug", fromEnv: true } });
   });
 
-  test("fetch handler rejects an invalid public base URL during setup", () => {
-    expect(() => createFetchHandler({ publicBaseUrl: "not-a-url" })).toThrow("LISTEN_PUBLIC_BASE_URL must be a valid absolute http(s) URL");
-  });
-
   test("fetch handler runtime overrides stay isolated without mutating the environment", async () => {
     const envNames = [
       "LISTEN_HOST",
@@ -216,6 +212,24 @@ describe("API", () => {
     expect(secondResponse?.status).toBe(201);
     expect((await json<{ webhookUrl: string }>(firstResponse!)).webhookUrl).toContain("https://first.example/api/webhooks/");
     expect((await json<{ webhookUrl: string }>(secondResponse!)).webhookUrl).toContain("https://second.example/api/webhooks/");
+  });
+
+  test("fetch handler includes the trusted proxy prefix in webhook URLs", async () => {
+    const handler = createFetchHandler({
+      publicBaseUrl: "https://public.example",
+      trustProxy: { enabled: true, headers: ["prefix"], chain: "first" },
+    });
+    const response = await handler(new Request("http://internal.example/api/sources", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-forwarded-prefix": "/listen/",
+      },
+      body: JSON.stringify({ name: "Prefixed" }),
+    }));
+
+    expect(response?.status).toBe(201);
+    expect((await json<{ webhookUrl: string }>(response!)).webhookUrl).toMatch(/^https:\/\/public\.example\/listen\/api\/webhooks\//);
   });
 
   test("source creation returns webhook URL only from create and list omits it", async () => {
