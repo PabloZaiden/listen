@@ -48,6 +48,8 @@ After a successful mutation, reconcile the initiating client from the response o
 ## React Components
 
 Prefer small components and hooks. Components over 300 LOC should be decomposed. Use AbortController in effects that load data. UI changes should be manually checked on desktop and mobile when possible. For UI-specific changes and fixes, capture screenshots of the affected states and inspect them before calling the work complete when feasible.
+Keep browser entrypoints small: route views, domain data hooks, and substantial interaction logic belong in focused modules rather than the entrypoint.
+Components over 300 lines must be decomposed unless the code review documents a concrete reason to keep them together.
 
 ## Comments
 
@@ -81,6 +83,7 @@ Do not add or maintain a parallel app-owned event emitter.
 ## Testing
 
 Use `bun test` through repository scripts. Prefer API/integration tests over brittle frontend component tests. Do not add frontend tests that only reimplement or assert static component markup; cover behavior, data flow, contracts, or integration seams instead. Do not add Playwright tests; use Playwright only for manual UI validation when needed.
+Refactors must not add tests that merely assert component, file, or module structure.
 Test externally required atomic behavior rather than duplicating direct schema
 operations in application-level tests.
 
@@ -97,7 +100,7 @@ Do not use `INSERT OR REPLACE`. Do not interpolate untrusted values into SQL. Us
 
 ## Common Patterns
 
-Use Route -> Core -> Persistence imports. Use shared zod schemas for validation. Use `@pablozaiden/installer` for update behavior. Use the framework shell/settings/title-bar action menu/realtime/auth primitives instead of rebuilding them in Listen. Route components rendered by `WebAppRoot.routes` must use `Page` as the top-level wrapper, and app code must not render directly into `.wapp-main-content` or duplicate the fixed framework title with an app-local heading. Route-backed entity actions should live on `SidebarNode.actions`; use `WebAppRoot.header.getActions` only for actions that are not owned by an active sidebar node. Framework dialogs handle Enter/Escape, destructive/delete actions are red and last, sidebar badges are compact status dots, and header action buttons must stay visible while titles/subtitles truncate. When in doubt, inspect `github.com/pablozaiden/clanky` and follow the closest pattern unless a current Listen requirement differs.
+Use Route -> Core -> Persistence imports. Use shared zod schemas for validation. Use `@pablozaiden/installer` for update behavior. Use the framework shell/settings/title-bar action menu/realtime/auth primitives instead of rebuilding them in Listen. Browser entrypoints should compose focused route modules, domain hooks, and interaction components instead of implementing those concerns inline. Route components rendered by `WebAppRoot.routes` must use `Page` as the top-level wrapper, and app code must not render directly into `.wapp-main-content` or duplicate the fixed framework title with an app-local heading. Define actions owned by a route-backed sidebar node once on that node so the framework can reuse them for sidebar context menus and the active title-bar menu; use `WebAppRoot.header.getActions` only for routes without an owning sidebar node or genuinely additional route actions. Framework dialogs handle Enter/Escape, destructive/delete actions are red and last, sidebar badges are compact status dots, and header action buttons must stay visible while titles/subtitles truncate. When in doubt, inspect `github.com/pablozaiden/clanky` and follow the closest pattern unless a current Listen requirement differs.
 
 ## Pagination and Realtime Collections
 
