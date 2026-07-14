@@ -111,23 +111,13 @@ export function getNotificationById(id: string, userId: string): PersistedNotifi
   return row ? mapNotification(row) : undefined;
 }
 
-export function markNotificationOpened(id: string, openedAt: string, userId: string): PersistedNotification | undefined {
+export function markNotificationRead(id: string, readAt: string, userId: string): PersistedNotification | undefined {
   const ownerId = requireUserId(userId);
   getDatabase().query(`
     UPDATE notifications
-    SET opened_at = COALESCE(opened_at, $openedAt)
+    SET opened_at = COALESCE(opened_at, $readAt)
     WHERE id = $id AND user_id = $userId
-  `).run({ id, openedAt, userId: ownerId });
-  return getNotificationById(id, ownerId);
-}
-
-export function markNotificationRead(id: string, openedAt: string, userId: string): PersistedNotification | undefined {
-  const ownerId = requireUserId(userId);
-  getDatabase().query(`
-    UPDATE notifications
-    SET opened_at = COALESCE(opened_at, $openedAt)
-    WHERE id = $id AND user_id = $userId
-  `).run({ id, openedAt, userId: ownerId });
+  `).run({ id, readAt, userId: ownerId });
   return getNotificationById(id, ownerId);
 }
 
@@ -141,16 +131,16 @@ export function markNotificationUnread(id: string, userId: string): PersistedNot
   return getNotificationById(id, ownerId);
 }
 
-export function markNotificationsRead(options: Pick<ListNotificationOptions, "userId" | "sourceId" | "opened">, openedAt: string): number {
+export function markNotificationsRead(options: Pick<ListNotificationOptions, "userId" | "sourceId" | "opened">, readAt: string): number {
   const where = whereClause(options);
   const result = getDatabase().query(`
     UPDATE notifications
-    SET opened_at = COALESCE(opened_at, $openedAt)
+    SET opened_at = COALESCE(opened_at, $readAt)
     ${where}
   `).run({
     sourceId: options.sourceId ?? null,
     userId: options.userId,
-    openedAt,
+    readAt,
   });
   return result.changes;
 }

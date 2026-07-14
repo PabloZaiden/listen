@@ -28,6 +28,9 @@ Keep strict types. Prefer shared contracts from `packages/contracts`, shared lim
 ## Naming Conventions
 
 Use clear English names for code, comments, API messages, documentation, and release metadata.
+Choose one domain term for each state and use it consistently across routes, core functions, persistence, events, and UI.
+Do not add alias routes or duplicate mutation functions without a documented compatibility requirement and removal plan.
+State-transition events must describe the resulting state accurately.
 
 ## Error Handling
 

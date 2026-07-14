@@ -94,7 +94,7 @@ type NotificationListRowProps = {
   openRowId?: string;
   isOpen: boolean;
   setOpenRowId: (id: string | undefined) => void;
-  markNotificationOpened: (notification: NotificationListItem) => Promise<void>;
+  updateNotificationReadState: (notification: NotificationListItem) => Promise<void>;
   requestDeleteNotification: (notification: NotificationListItem) => void;
 };
 
@@ -113,7 +113,7 @@ function NotificationListRow({
   openRowId,
   isOpen,
   setOpenRowId,
-  markNotificationOpened,
+  updateNotificationReadState,
   requestDeleteNotification,
 }: NotificationListRowProps) {
   const swipeStart = useRef<SwipeStart | undefined>(undefined);
@@ -216,7 +216,7 @@ function NotificationListRow({
 
   async function runMarkAction(): Promise<void> {
     closeActions();
-    await markNotificationOpened(notification);
+    await updateNotificationReadState(notification);
   }
 
   function runDeleteAction(): void {
@@ -480,7 +480,7 @@ function InboxView({ route, refreshSources, requestConfirm }: { route: WebAppRou
   }, [openRowId]);
   const notifications = result?.notifications ?? [];
 
-  async function markNotificationOpened(notification: NotificationListItem): Promise<void> {
+  async function updateNotificationReadState(notification: NotificationListItem): Promise<void> {
     const action = notification.openedAt ? "unread" : "read";
     const response = await appJson<{ notification: NotificationListItem }>(`/api/notifications/${encodeURIComponent(notification.id)}/${action}`, { method: "POST" });
     updateNotification(response.notification);
@@ -538,7 +538,7 @@ function InboxView({ route, refreshSources, requestConfirm }: { route: WebAppRou
                 openRowId={openRowId}
                 isOpen={openRowId === notification.id}
                 setOpenRowId={setOpenRowId}
-                markNotificationOpened={markNotificationOpened}
+                updateNotificationReadState={updateNotificationReadState}
                 requestDeleteNotification={requestDeleteNotification}
               />
             ))}

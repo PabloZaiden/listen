@@ -10,8 +10,6 @@ import {
   updateSourceTokenHash,
   type PersistedSource,
 } from "../persistence/sources";
-import { emit } from "./event-emitter";
-import { getUnreadNotificationCount } from "./notifications";
 import { generateWebhookToken, hashWebhookToken } from "./webhook-tokens";
 import { createLogger } from "./logger";
 
@@ -49,7 +47,6 @@ export async function createSource(name: string, publicBaseUrl: string, userId: 
   };
   insertSource(source);
   const response = toSourceResponse(source);
-  emit({ type: "source.created", source: response });
   log.info("Source created", { sourceId: source.id, userId: ownerId, name: source.name });
   return {
     source: response,
@@ -79,7 +76,6 @@ export async function rotateSourceToken(id: string, publicBaseUrl: string, userI
     return undefined;
   }
   const response = toSourceResponse(updated);
-  emit({ type: "source.updated", source: response });
   log.info("Source token rotated", { sourceId: id });
   return {
     source: response,
@@ -95,7 +91,6 @@ export function markSourceUsed(id: string, userId: string, usedAt = nowIso()): S
     return undefined;
   }
   const response = toSourceResponse(source);
-  emit({ type: "source.updated", source: response });
   return response;
 }
 
@@ -106,8 +101,6 @@ export function deleteSourceAndNotifications(id: string, userId: string): boolea
     log.warn("Source delete requested but source was not found", { sourceId: id });
     return false;
   }
-  emit({ type: "notifications.deleted", sourceId: id, deletedCount: deleted.deletedNotificationCount, unreadCount: getUnreadNotificationCount(ownerId) });
-  emit({ type: "source.deleted", sourceId: id });
   log.info("Source deleted", { sourceId: id, deletedNotificationCount: deleted.deletedNotificationCount });
   return true;
 }

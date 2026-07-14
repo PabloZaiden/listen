@@ -121,16 +121,6 @@ function createRoutes(
       return jsonResponse({ deletedCount });
     },
   },
-  "/api/notifications/mark-read": {
-    auth: "user",
-    POST: (req, ctx) => {
-      const user = ctx.requireUser();
-      const url = new URL(req.url);
-      const updatedCount = markNotificationsRead(user.id, url.searchParams.get("sourceId") || undefined);
-      ctx.userRealtime.publishChanged("notifications");
-      return jsonResponse({ updatedCount });
-    },
-  },
   "/api/notifications/read": {
     auth: "user",
     POST: (req, ctx) => {

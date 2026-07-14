@@ -7,7 +7,6 @@ import { sourceMutationResponseSchema, sourceResponseSchema, type SourceMutation
 import { BROWSER_PUSH_ENDPOINT_MAX_CHARS, LIST_NOTIFICATIONS_DEFAULT_LIMIT, LIST_NOTIFICATIONS_MAX_LIMIT, WEBHOOK_JSON_BODY_MAX_BYTES } from "@listen/shared";
 import { createFetchHandler, getWebhookCallerKey } from "../../src/server";
 import { setBrowserPushSenderForTests } from "../../src/core/browser-push";
-import { subscribe } from "../../src/core/event-emitter";
 import { getLogLevel } from "../../src/core/logger";
 import { deleteSourceAndNotifications } from "../../src/core/sources";
 import { createWebhookRateLimiter, type WebhookRateLimitOptions } from "../../src/core/webhook-rate-limit";
@@ -701,23 +700,8 @@ describe("API", () => {
       expect(webhookResponse.status).toBe(201);
     }
 
-    const deletedNotificationEvents: Array<{ sourceId?: string; deletedCount: number }> = [];
-    const unsubscribe = subscribe((event) => {
-      if (event.type === "notifications.deleted") {
-        deletedNotificationEvents.push(event);
-      }
-    });
-    try {
-      const deleted = await request(`/api/sources/${first.source.id}`, { method: "DELETE" });
-      expect(deleted.status).toBe(200);
-    } finally {
-      unsubscribe();
-    }
-    expect(deletedNotificationEvents).toHaveLength(1);
-    expect(deletedNotificationEvents[0]).toMatchObject({
-      sourceId: first.source.id,
-      deletedCount: 1,
-    });
+    const deleted = await request(`/api/sources/${first.source.id}`, { method: "DELETE" });
+    expect(deleted.status).toBe(200);
 
     const sources = await json<{ sources: Array<{ id: string }> }>(await request("/api/sources"));
     expect(sources.sources.some((source) => source.id === first.source.id)).toBe(false);
@@ -745,18 +729,12 @@ describe("API", () => {
       END;
     `);
 
-    const events: string[] = [];
-    const unsubscribe = subscribe((event) => {
-      events.push(event.type);
-    });
     try {
       expect(() => deleteSourceAndNotifications(created.source.id, currentOwnerId())).toThrow();
     } finally {
-      unsubscribe();
       getDatabase().exec("DROP TRIGGER fail_source_delete");
     }
 
-    expect(events).toEqual([]);
     const sources = await json<{ sources: Array<{ id: string }> }>(await request("/api/sources"));
     expect(sources.sources.some((source) => source.id === created.source.id)).toBe(true);
     const notifications = await json<{ notifications: unknown[] }>(
@@ -765,7 +743,7 @@ describe("API", () => {
     expect(notifications.notifications).toHaveLength(1);
   });
 
-  test("notification detail marks opened and deletes work", async () => {
+  test("notification detail marks read and deletes work", async () => {
     const created = await createSource();
     const webhookResponse = await webhook(created.webhookUrl, {
       method: "POST",
@@ -774,10 +752,19 @@ describe("API", () => {
     });
 
     const notification = await json<{ id: string }>(webhookResponse);
+    const beforeDetail = await json<{ unreadCount: number }>(await request("/api/notifications"));
     const detailResponse = await request(`/api/notifications/${notification.id}`);
     const detail = await json<{ notification: { openedAt: string; markdownContent: string } }>(detailResponse);
     expect(detail.notification.openedAt).toBeTruthy();
     expect(detail.notification.markdownContent).toBe("C");
+    const afterFirstDetail = await json<{ unreadCount: number }>(await request("/api/notifications"));
+    expect(afterFirstDetail.unreadCount).toBe(beforeDetail.unreadCount - 1);
+
+    const repeatedDetail = await request(`/api/notifications/${notification.id}`);
+    expect(repeatedDetail.status).toBe(200);
+    const afterRepeatedDetail = await json<{ unreadCount: number }>(await request("/api/notifications"));
+    expect(afterRepeatedDetail.unreadCount).toBe(afterFirstDetail.unreadCount);
+
     const deleteResponse = await request(`/api/notifications/${notification.id}`, { method: "DELETE" });
     expect(deleteResponse.status).toBe(200);
     const missingResponse = await request(`/api/notifications/${notification.id}`);
@@ -802,11 +789,23 @@ describe("API", () => {
     const afterRead = await json<{ unreadCount: number }>(await request("/api/notifications"));
     expect(afterRead.unreadCount).toBe(initialUnreadCount);
 
+    const repeatedReadResponse = await request(`/api/notifications/${notification.id}/read`, { method: "POST" });
+    expect(repeatedReadResponse.status).toBe(200);
+    expect((await json<{ notification: { openedAt?: string } }>(repeatedReadResponse)).notification.openedAt).toBeTruthy();
+    const afterRepeatedRead = await json<{ unreadCount: number }>(await request("/api/notifications"));
+    expect(afterRepeatedRead.unreadCount).toBe(initialUnreadCount);
+
     const unreadResponse = await request(`/api/notifications/${notification.id}/unread`, { method: "POST" });
     expect(unreadResponse.status).toBe(200);
     expect((await json<{ notification: { openedAt?: string } }>(unreadResponse)).notification.openedAt).toBeUndefined();
     const afterUnread = await json<{ unreadCount: number }>(await request("/api/notifications"));
     expect(afterUnread.unreadCount).toBe(initialUnreadCount + 1);
+
+    const repeatedUnreadResponse = await request(`/api/notifications/${notification.id}/unread`, { method: "POST" });
+    expect(repeatedUnreadResponse.status).toBe(200);
+    expect((await json<{ notification: { openedAt?: string } }>(repeatedUnreadResponse)).notification.openedAt).toBeUndefined();
+    const afterRepeatedUnread = await json<{ unreadCount: number }>(await request("/api/notifications"));
+    expect(afterRepeatedUnread.unreadCount).toBe(initialUnreadCount + 1);
   });
 
   test("bulk mark read can target one source", async () => {
@@ -1216,8 +1215,8 @@ describe("API", () => {
       expect(response.status).toBe(404);
     }
 
-    const markReadForB = await requestAs(userB, "/api/notifications/mark-read", { method: "POST" });
-    expect(await json<{ updatedCount: number }>(markReadForB)).toEqual({ updatedCount: 0 });
+    const markReadForB = await requestAs(userB, "/api/notifications/read", { method: "POST" });
+    expect(await json<{ success: boolean; updatedCount: number }>(markReadForB)).toEqual({ success: true, updatedCount: 0 });
     const deleteForB = await requestAs(userB, "/api/notifications", { method: "DELETE" });
     expect(await json<{ deletedCount: number }>(deleteForB)).toEqual({ deletedCount: 0 });
 
