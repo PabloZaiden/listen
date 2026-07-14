@@ -42,7 +42,7 @@ Follow the surrounding TypeScript style. Keep code readable and avoid unrelated 
 
 ## API Routes
 
-App routes should be declared in `src/server.ts` with `defineRoutes` and delegate mutations to core managers. Route handlers must not import persistence modules directly. Persistence must use parameterized SQL.
+App routes should be declared in `src/server.ts` with `defineRoutes` and delegate mutations to core managers. Route handlers must not import persistence modules directly. Persistence must use parameterized SQL. Validate request bodies, query parameters, and reusable route inputs through shared schemas from `packages/contracts` when a schema exists. Do not duplicate limits, defaults, coercion, or validation rules in route handlers. Invalid external input must return a structured error instead of being silently replaced with a valid default.
 
 ## Bun Specifics
 

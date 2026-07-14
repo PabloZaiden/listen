@@ -25,7 +25,7 @@ export const listNotificationsQuerySchema = z.object({
   sourceId: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(LIST_NOTIFICATIONS_MAX_LIMIT).default(LIST_NOTIFICATIONS_DEFAULT_LIMIT),
   offset: z.coerce.number().int().min(0).default(0),
-  opened: z.enum(["true", "false"]).optional(),
+  opened: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
 });
 
 export const markdownContentSchema = z.string().min(1).refine(
