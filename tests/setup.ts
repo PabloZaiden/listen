@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach } from "bun:test";
 import { closeDatabaseForTests, initializeDatabase } from "../src/persistence/database";
-import { resetEventEmitterForTests } from "../src/core/event-emitter";
 import { setBrowserPushSenderForTests } from "../src/core/browser-push";
 import { setLogLevel } from "../src/core/logger";
 import { DEFAULT_LOG_LEVEL } from "@listen/shared";
@@ -23,7 +22,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  resetEventEmitterForTests();
   setBrowserPushSenderForTests();
   setLogLevel(DEFAULT_LOG_LEVEL);
   closeDatabaseForTests();

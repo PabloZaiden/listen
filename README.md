@@ -63,6 +63,20 @@ listen notify --title "Review needed" --description "The agent needs attention" 
 listen notify --title "Icon" --description "PNG attached" --markdown "Done." --icon-file ./icon.png
 ```
 
+## Notification read state
+
+Listen uses `read` and `unread` for notification state transitions. Fetching
+`GET /api/notifications/:id` marks an unread notification read the first time;
+repeated detail fetches do not change its state or the unread count. Use
+`POST /api/notifications/read` for bulk reads and
+`POST /api/notifications/:id/read` or
+`POST /api/notifications/:id/unread` for individual changes.
+
+The existing `openedAt` response field and `opened=true|false` list/delete
+filter are retained as compatibility names for the read timestamp and
+read-state filter. The removed `/api/notifications/mark-read` alias is not
+supported.
+
 ## Docker deployment
 
 ```yaml
