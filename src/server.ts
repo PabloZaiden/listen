@@ -63,7 +63,6 @@ function createRoutes(
   "/api/sources": {
     auth: "user",
     requestSchema: createSourceRequestSchema,
-    responseSchema: sourceMutationResponseSchema,
     GET: (_req, ctx) => {
       const user = ctx.requireUser();
       return jsonResponse({ sources: listSources(true, user.id) });
