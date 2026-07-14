@@ -283,6 +283,7 @@ describe("API", () => {
 
     const invalidQueries = [
       "limit=0",
+      "limit=-1",
       `limit=${LIST_NOTIFICATIONS_MAX_LIMIT + 1}`,
       "limit=1.5",
       "limit=not-a-number",
@@ -324,7 +325,7 @@ describe("API", () => {
     );
     expect(unread.notifications).toHaveLength(1);
 
-    for (const query of ["opened=maybe", `limit=${LIST_NOTIFICATIONS_MAX_LIMIT + 1}`]) {
+    for (const query of ["opened=maybe", `limit=${LIST_NOTIFICATIONS_MAX_LIMIT + 1}`, "offset=-1"]) {
       const response = await request(`/api/notifications?${query}`, { method: "DELETE" });
       expect(response.status).toBe(400);
       expect(await json<{ error: string }>(response)).toMatchObject({ error: "invalid_request_query" });
