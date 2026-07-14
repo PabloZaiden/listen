@@ -103,8 +103,8 @@ export function deleteSource(id: string, userId: string): { source: PersistedSou
     }
 
     const notificationCount = database.query(
-      "SELECT COUNT(*) as count FROM notifications WHERE source_id = $id",
-    ).get({ id }) as { count: number };
+      "SELECT COUNT(*) as count FROM notifications WHERE source_id = $id AND user_id = $userId",
+    ).get({ id, userId: ownerId }) as { count: number };
     const deletedSource = database.query(
       "DELETE FROM webhook_sources WHERE id = $id AND user_id = $userId",
     ).run({ id, userId: ownerId });
