@@ -12,7 +12,7 @@ import { createLogger, setLogLevel } from "./core/logger";
 import { verifyWebhookToken } from "./core/webhook-tokens";
 import { createNotificationFromWebhook, deleteNotification, deleteNotifications, listNotifications, markNotificationRead, markNotificationUnread, markNotificationsRead, openNotification } from "./core/notifications";
 import { createSource, deleteSourceAndNotifications, getSourceForWebhook, listSources, markSourceUsed, rotateSourceToken } from "./core/sources";
-import { BrowserPushSubscriptionConflictError, getBrowserPushConfig, getBrowserPushSubscriptionStatus, subscribeBrowserPush, unsubscribeBrowserPush } from "./core/browser-push";
+import { getBrowserPushConfig, getBrowserPushSubscriptionStatus, subscribeBrowserPush, unsubscribeBrowserPush } from "./core/browser-push";
 import { initializeDatabase } from "./persistence/database";
 import { LISTEN_VERSION } from "./version";
 import { createWebhookRateLimiter, type WebhookRateLimitDecision, type WebhookRateLimiter } from "./core/webhook-rate-limit";
@@ -188,14 +188,7 @@ function createRoutes(
     async POST(req, ctx) {
       const user = ctx.requireUser();
       const body = await parseJson(req, browserPushSubscribeRequestSchema);
-      try {
-        return jsonResponse(subscribeBrowserPush(body.subscription, req, user.id), { status: 201 });
-      } catch (error) {
-        if (error instanceof BrowserPushSubscriptionConflictError) {
-          return errorResponse(409, "browser_push_subscription_conflict", error.message);
-        }
-        throw error;
-      }
+      return jsonResponse(subscribeBrowserPush(body.subscription, req, user.id), { status: 201 });
     },
     async DELETE(req, ctx) {
       const user = ctx.requireUser();

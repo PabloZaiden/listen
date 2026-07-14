@@ -8,7 +8,7 @@ import { createFetchHandler, getWebhookCallerKey } from "../../src/server";
 import { setBrowserPushSenderForTests } from "../../src/core/browser-push";
 import { getLogLevel } from "../../src/core/logger";
 import { createWebhookRateLimiter, type WebhookRateLimitOptions } from "../../src/core/webhook-rate-limit";
-import { getBrowserPushSubscriptionByEndpoint } from "../../src/persistence/browser-push";
+import { getBrowserPushSubscriptionByEndpoint, markBrowserPushSubscriptionFailed } from "../../src/persistence/browser-push";
 import { getDatabase } from "../../src/persistence/database";
 
 async function request(path: string, init?: RequestInit, config?: Partial<RuntimeConfig>): Promise<Response> {
@@ -144,13 +144,13 @@ async function webhook(webhookUrl: string, init: RequestInit): Promise<Response>
   return request(url.pathname, init);
 }
 
-function browserPushSubscription(endpoint: string): unknown {
+function browserPushSubscription(endpoint: string, p256dh = "p256dh-key", auth = "auth-key"): unknown {
   return {
     endpoint,
     expirationTime: null,
     keys: {
-      p256dh: "p256dh-key",
-      auth: "auth-key",
+      p256dh,
+      auth,
     },
   };
 }
@@ -850,7 +850,7 @@ describe("API", () => {
       body: JSON.stringify({ subscription: browserPushSubscription(endpoint) }),
     });
     expect(subscribe.status).toBe(201);
-    expect(await json<{ subscribed: boolean }>(subscribe)).toEqual({ subscribed: true });
+    expect(await json<{ subscribed: boolean; outcome: string }>(subscribe)).toEqual({ subscribed: true, outcome: "created" });
 
     const lookup = await request("/api/browser-push/subscriptions/lookup", {
       method: "POST",
@@ -968,6 +968,114 @@ describe("API", () => {
       const temporarySubscription = getBrowserPushSubscriptionByEndpoint(temporaryEndpoint, ownerId);
       expect(temporarySubscription?.failureCount).toBe(1);
       expect(temporarySubscription?.nextAttemptAt).toBeTruthy();
+    });
+  });
+
+  test("browser push claims transfer ownership explicitly and keep delivery owner-scoped", async () => {
+    const userA = createAuthenticatedTestUser("push-claim-a");
+    const userB = createAuthenticatedTestUser("push-claim-b");
+    const endpoint = "https://push.example.test/ownership/transfer";
+    const claim = async (user: AuthenticatedTestUser, p256dh: string, auth: string): Promise<{ subscribed: boolean; outcome: string }> => {
+      const response = await requestAs(user, "/api/browser-push/subscriptions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ subscription: browserPushSubscription(endpoint, p256dh, auth) }),
+      });
+      expect(response.status).toBe(201);
+      return json(response);
+    };
+
+    expect(await claim(userA, "a-p256dh", "a-auth")).toEqual({ subscribed: true, outcome: "created" });
+
+    expect(await claim(userA, "a-refreshed-p256dh", "a-refreshed-auth")).toEqual({
+      subscribed: true,
+      outcome: "refreshed",
+    });
+    expect(getBrowserPushSubscriptionByEndpoint(endpoint, userA.userId)).toMatchObject({
+      userId: userA.userId,
+      p256dh: "a-refreshed-p256dh",
+      auth: "a-refreshed-auth",
+      failureCount: 0,
+    });
+
+    markBrowserPushSubscriptionFailed(
+      endpoint,
+      userA.userId,
+      "2026-07-14T07:00:00.000Z",
+      "2999-01-01T00:00:00.000Z",
+    );
+    expect(getBrowserPushSubscriptionByEndpoint(endpoint, userA.userId)).toMatchObject({
+      failureCount: 1,
+      nextAttemptAt: "2999-01-01T00:00:00.000Z",
+    });
+
+    const transfer = await claim(userB, "b-p256dh", "b-auth");
+    expect(transfer).toEqual({ subscribed: true, outcome: "transferred" });
+    const transferBody = JSON.stringify(transfer);
+    expect(transferBody).not.toContain(endpoint);
+    expect(transferBody).not.toContain("b-p256dh");
+    expect(transferBody).not.toContain("b-auth");
+
+    expect(getBrowserPushSubscriptionByEndpoint(endpoint, userA.userId)).toBeUndefined();
+    expect(getBrowserPushSubscriptionByEndpoint(endpoint, userB.userId)).toMatchObject({
+      userId: userB.userId,
+      p256dh: "b-p256dh",
+      auth: "b-auth",
+      failureCount: 0,
+    });
+    const transferred = getBrowserPushSubscriptionByEndpoint(endpoint, userB.userId);
+    expect(transferred?.lastFailureAt).toBeUndefined();
+    expect(transferred?.nextAttemptAt).toBeUndefined();
+    expect(transferred?.disabledAt).toBeUndefined();
+
+    const lookupFromA = await requestAs(userA, "/api/browser-push/subscriptions/lookup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ endpoint }),
+    });
+    expect(await json<{ subscribed: boolean }>(lookupFromA)).toEqual({ subscribed: false });
+
+    const deleteFromA = await requestAs(userA, "/api/browser-push/subscriptions", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ endpoint }),
+    });
+    expect(await json<{ subscribed: boolean }>(deleteFromA)).toEqual({ subscribed: false });
+
+    const lookupFromB = await requestAs(userB, "/api/browser-push/subscriptions/lookup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ endpoint }),
+    });
+    expect(await json<{ subscribed: boolean }>(lookupFromB)).toEqual({ subscribed: true });
+
+    const createOwnedSource = async (user: AuthenticatedTestUser, name: string): Promise<{ webhookUrl: string }> => {
+      const response = await requestAs(user, "/api/sources", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      expect(response.status).toBe(201);
+      return json(response);
+    };
+    const sourceA = await createOwnedSource(userA, "Push claim A");
+    const sourceB = await createOwnedSource(userB, "Push claim B");
+    const deliveredEndpoints: string[] = [];
+    setBrowserPushSenderForTests(async (subscription) => {
+      deliveredEndpoints.push(subscription.endpoint);
+      return { statusCode: 201, body: "", headers: {} };
+    });
+
+    const notificationInit = (title: string) => ({
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title, shortDescription: "Push claim", markdownContent: title }),
+    });
+    expect((await webhook(sourceA.webhookUrl, notificationInit("Prior owner"))).status).toBe(201);
+    expect(deliveredEndpoints).toEqual([]);
+    expect((await webhook(sourceB.webhookUrl, notificationInit("New owner"))).status).toBe(201);
+    await waitForExpectation(() => {
+      expect(deliveredEndpoints).toEqual([endpoint]);
     });
   });
 
