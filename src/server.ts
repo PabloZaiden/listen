@@ -12,7 +12,7 @@ import { createLogger, setLogLevel } from "./core/logger";
 import { verifyWebhookToken } from "./core/webhook-tokens";
 import { createNotificationFromWebhook, deleteNotification, deleteNotifications, listNotifications, markNotificationRead, markNotificationUnread, markNotificationsRead, openNotification } from "./core/notifications";
 import { createSource, deleteSourceAndNotifications, getSourceForWebhook, listSources, markSourceUsed, rotateSourceToken } from "./core/sources";
-import { getBrowserPushConfig, getBrowserPushSubscriptionStatus, subscribeBrowserPush, unsubscribeBrowserPush } from "./core/browser-push";
+import { BrowserPushSubscriptionConflictError, getBrowserPushConfig, getBrowserPushSubscriptionStatus, subscribeBrowserPush, unsubscribeBrowserPush } from "./core/browser-push";
 import { initializeDatabase } from "./persistence/database";
 import { LISTEN_VERSION } from "./version";
 import { checkGlobalWebhookRateLimit, checkSourceWebhookRateLimit, type WebhookRateLimitDecision } from "./core/webhook-rate-limit";
@@ -171,7 +171,14 @@ function createRoutes(runtimeConfig: RuntimeConfig) {
     async POST(req, ctx) {
       const user = ctx.requireUser();
       const body = await parseJson(req, browserPushSubscribeRequestSchema);
-      return jsonResponse(subscribeBrowserPush(body.subscription, req, user.id), { status: 201 });
+      try {
+        return jsonResponse(subscribeBrowserPush(body.subscription, req, user.id), { status: 201 });
+      } catch (error) {
+        if (error instanceof BrowserPushSubscriptionConflictError) {
+          return errorResponse(409, "browser_push_subscription_conflict", error.message);
+        }
+        throw error;
+      }
     },
     async DELETE(req, ctx) {
       const user = ctx.requireUser();
@@ -226,7 +233,7 @@ function createRoutes(runtimeConfig: RuntimeConfig) {
         throw error;
       }
       const notification = createNotificationFromWebhook(body, source, { publicOrigin: getRequestOriginInfo(req, runtimeConfig).origin });
-      markSourceUsed(source.id);
+      markSourceUsed(source.id, source.userId);
       ctx.realtime.publishEntityChanged("notifications", notification.id, { target: { userId: source.userId }, payload: notification });
       ctx.realtime.publishEntityChanged("sources", source.id, { target: { userId: source.userId } });
       return jsonResponse({ id: notification.id }, { status: 201 });

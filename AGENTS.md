@@ -12,6 +12,8 @@ Listen is a multi-user notification inbox for coding agents. It has a Bun backen
 
 All protected app APIs must use framework auth. The webhook endpoint is the only app-owned unauthenticated write endpoint. Never log webhook tokens, passkey material, cookies, auth headers, bearer tokens, API keys, or raw credentials. Never store raw webhook tokens. Never trust `source` from webhook payloads.
 
+Multi-user ownership is mandatory in core and persistence APIs. Optional ownership must never implicitly mean global access. Deliberate public or administrative cross-user operations must use separately named, narrowly scoped functions, and database row types must remain aligned with `NOT NULL` ownership constraints instead of masking impossible nulls with empty identifiers.
+
 ## TypeScript
 
 Keep strict types. Prefer shared contracts from `packages/contracts`, shared limits from `packages/shared`, and framework helpers from `@pablozaiden/webapp`. Use bracket notation for environment variables. All source code must be TypeScript; do not add JavaScript source files. Bun serves and executes TypeScript directly, including browser-facing entrypoints such as service workers.
