@@ -12,7 +12,13 @@ export const sourceResponseSchema = z.object({
   updatedAt: z.string(),
   lastUsedAt: z.string().optional(),
   disabledAt: z.string().optional(),
-});
+}).strict();
+
+export const sourceMutationResponseSchema = z.object({
+  source: sourceResponseSchema,
+  webhookUrl: z.string().url(),
+}).strict();
 
 export type CreateSourceRequest = z.infer<typeof createSourceRequestSchema>;
 export type SourceResponse = z.infer<typeof sourceResponseSchema>;
+export type SourceMutationResponse = z.infer<typeof sourceMutationResponseSchema>;

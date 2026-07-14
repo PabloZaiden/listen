@@ -35,4 +35,11 @@ describe("database schema", () => {
       }));
     }
   });
+
+  test("stores webhook source credentials as hashes only", () => {
+    const columns = columnInfo("webhook_sources").map((column) => column.name);
+
+    expect(columns).toContain("token_hash");
+    expect(columns).not.toContain("token");
+  });
 });

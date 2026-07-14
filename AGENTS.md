@@ -11,6 +11,9 @@ Listen is a multi-user notification inbox for coding agents. It has a Bun backen
 ## Authentication and Security
 
 All protected app APIs must use framework auth. The webhook endpoint is the only app-owned unauthenticated write endpoint. Never log webhook tokens, passkey material, cookies, auth headers, bearer tokens, API keys, or raw credentials. Never store raw webhook tokens. Never trust `source` from webhook payloads.
+Return each secret only in the minimum representation required by the caller; do not expose redundant raw credential fields.
+Define response schemas for endpoints that return one-time credentials and serialize only those schemas.
+Never log webhook tokens, complete webhook URLs, or other raw credentials.
 
 Multi-user ownership is mandatory in core and persistence APIs. Optional ownership must never implicitly mean global access. Deliberate public or administrative cross-user operations must use separately named, narrowly scoped functions, and database row types must remain aligned with `NOT NULL` ownership constraints instead of masking impossible nulls with empty identifiers.
 Multi-user upserts must never rewrite an ownership field as an incidental conflict update. When a globally unique client resource can move between users, model the move as a separately named claim/transfer operation with an atomic ownership change and a typed result.

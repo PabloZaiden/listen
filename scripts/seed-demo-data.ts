@@ -1,9 +1,4 @@
-import type { SourceResponse } from "@listen/contracts";
-
-interface CreatedSource {
-  source: SourceResponse;
-  webhookUrl: string;
-}
+import type { SourceMutationResponse } from "@listen/contracts";
 
 interface DemoNotification {
   title: string;
@@ -39,7 +34,7 @@ function envBoolean(name: string): boolean {
   return value === "true" || value === "1" || value === "yes";
 }
 
-async function apiJson<T>(url: string, init?: RequestInit): Promise<T> {
+async function apiJson<T>(url: string, init?: RequestInit, context = "API request"): Promise<T> {
   const response = await fetch(url, {
     ...init,
     headers: {
@@ -56,7 +51,7 @@ async function apiJson<T>(url: string, init?: RequestInit): Promise<T> {
     } catch {
       message = response.statusText || message;
     }
-    throw new Error(`${message} (${url})`);
+    throw new Error(`${message} (${context})`);
   }
   return response.json() as Promise<T>;
 }
@@ -169,16 +164,16 @@ async function main(): Promise<void> {
   const reset = envBoolean("LISTEN_DEMO_RESET");
 
   if (reset) {
-    await apiJson(`${baseUrl}/api/notifications`, { method: "DELETE" });
+    await apiJson(`${baseUrl}/api/notifications`, { method: "DELETE" }, "notification reset");
     console.warn("LISTEN_DEMO_RESET cleared notifications. Sources are soft-disabled only by the app API; use a fresh LISTEN_DATA_DIR for a fully clean demo dataset.");
   }
 
-  const createdSources: CreatedSource[] = [];
+  const createdSources: SourceMutationResponse[] = [];
   for (const name of buildSourceNames(sourceCount)) {
-    createdSources.push(await apiJson<CreatedSource>(`${baseUrl}/api/sources`, {
+    createdSources.push(await apiJson<SourceMutationResponse>(`${baseUrl}/api/sources`, {
       method: "POST",
       body: JSON.stringify({ name }),
-    }));
+    }, "source creation"));
   }
 
   const notifications = demoNotifications(notificationCount);
@@ -190,7 +185,7 @@ async function main(): Promise<void> {
     await apiJson(source.webhookUrl, {
       method: "POST",
       body: JSON.stringify(notification),
-    });
+    }, "webhook delivery");
   }
 
   console.log("Created demo sources:");

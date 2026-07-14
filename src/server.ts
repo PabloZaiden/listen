@@ -7,7 +7,7 @@ import listenIcon192Path from "./web/icons/listen-192.png" with { type: "file" }
 import listenIcon512Path from "./web/icons/listen-512.png" with { type: "file" };
 import appleTouchIconPath from "./web/icons/apple-touch-icon.png" with { type: "file" };
 import { createWebAppServer, defineRoutes, errorResponse, getRequestBaseUrl, getRequestOriginInfo, jsonResponse, notFound, parseJson, readRuntimeConfig, sqliteWebAppStore, successResponse, type ResourceRealtimeEvent, type RuntimeConfig, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
-import { browserPushEndpointRequestSchema, browserPushSubscribeRequestSchema, createSourceRequestSchema, listNotificationsQuerySchema, type WebhookNotificationRequest, webhookNotificationRequestSchema } from "@listen/contracts";
+import { browserPushEndpointRequestSchema, browserPushSubscribeRequestSchema, createSourceRequestSchema, listNotificationsQuerySchema, sourceMutationResponseSchema, type WebhookNotificationRequest, webhookNotificationRequestSchema } from "@listen/contracts";
 import { createLogger, setLogLevel } from "./core/logger";
 import { verifyWebhookToken } from "./core/webhook-tokens";
 import { createNotificationFromWebhook, deleteNotification, deleteNotifications, listNotifications, markNotificationRead, markNotificationUnread, markNotificationsRead, openNotification } from "./core/notifications";
@@ -72,17 +72,18 @@ function createRoutes(
       const body = await parseJson(req, createSourceRequestSchema);
       const source = await createSource(body.name, getRequestBaseUrl(req, runtimeConfig), user.id);
       ctx.userRealtime.publishEntityChanged("sources", source.source.id, { payload: source.source });
-      return jsonResponse(source, { status: 201 });
+      return jsonResponse(sourceMutationResponseSchema.parse(source), { status: 201 });
     },
   },
   "/api/sources/:id/token/rotate": {
     auth: "user",
+    responseSchema: sourceMutationResponseSchema,
     async POST(req, ctx) {
       const user = ctx.requireUser();
       const source = await rotateSourceToken(ctx.params.id ?? "", getRequestBaseUrl(req, runtimeConfig), user.id);
       if (!source) return notFound();
       ctx.userRealtime.publishEntityChanged("sources", source.source.id, { payload: source.source });
-      return jsonResponse(source);
+      return jsonResponse(sourceMutationResponseSchema.parse(source));
     },
   },
   "/api/sources/:id": {
