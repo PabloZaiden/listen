@@ -77,6 +77,10 @@ function sourceFilterRoute(sourceId?: string): WebAppRoute {
   return sourceId ? { view: "inbox", sourceId } : { view: "inbox" };
 }
 
+function notificationReadMutationKey(notificationId: string): string {
+  return `notification:${notificationId}:read-state`;
+}
+
 function normalizeMarkdownForDisplay(value: string): string {
   return value.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n");
 }
@@ -97,7 +101,8 @@ type NotificationListRowProps = {
   openRowId?: string;
   isOpen: boolean;
   setOpenRowId: (id: string | undefined) => void;
-  toggleNotificationReadState: (notification: NotificationListItem) => Promise<boolean>;
+  toggleNotificationReadState: (notification: NotificationListItem, mutationKey: string) => Promise<boolean>;
+  notificationMutationKey: string;
   notificationMutationBusy: boolean;
   reportMutationError: (error: unknown) => void;
   requestDeleteNotification: (notification: NotificationListItem) => void;
@@ -119,6 +124,7 @@ function NotificationListRow({
   isOpen,
   setOpenRowId,
   toggleNotificationReadState,
+  notificationMutationKey,
   notificationMutationBusy,
   reportMutationError,
   requestDeleteNotification,
@@ -225,7 +231,7 @@ function NotificationListRow({
   async function runMarkAction(): Promise<void> {
     if (notificationMutationBusy) return;
     try {
-      await toggleNotificationReadState(notification);
+      await toggleNotificationReadState(notification, notificationMutationKey);
     } catch (error) {
       reportMutationError(error);
     }
@@ -521,19 +527,25 @@ function InboxView({
     toast.error(mutationErrorMessage(error, "Could not update the notification."));
   }
 
-  async function toggleNotificationReadState(notification: NotificationListItem): Promise<boolean> {
+  async function toggleNotificationReadState(notification: NotificationListItem, mutationKey: string): Promise<boolean> {
     const action = notification.openedAt ? "unread" : "read";
-    const mutationKey = `notification:${notification.id}:${action}`;
     if (!notificationMutations.start(mutationKey)) return false;
     try {
-      const response = await appJson<{ notification: NotificationListItem }>(`/api/notifications/${encodeURIComponent(notification.id)}/${action}`, { method: "POST" });
+      let response: { notification: NotificationListItem };
+      try {
+        response = await appJson<{ notification: NotificationListItem }>(`/api/notifications/${encodeURIComponent(notification.id)}/${action}`, { method: "POST" });
+      } catch (error) {
+        toast.error(mutationErrorMessage(error, `Could not mark notification as ${action}.`));
+        return false;
+      }
       updateNotification(response.notification);
       setOpenRowId(undefined);
-      await refreshNotifications();
+      try {
+        await refreshNotifications();
+      } catch (error) {
+        toast.error(mutationErrorMessage(error, `Notification marked as ${action}, but could not refresh notifications.`));
+      }
       return true;
-    } catch (error) {
-      toast.error(mutationErrorMessage(error, `Could not mark notification as ${action}.`));
-      return false;
     } finally {
       notificationMutations.finish(mutationKey);
     }
@@ -594,20 +606,24 @@ function InboxView({
       {notifications.length > 0 ? (
         <Panel>
           <DataList>
-            {notifications.map((notification) => (
-              <NotificationListRow
-                key={notification.id}
-                notification={notification}
-                sourceId={sourceId}
-                openRowId={openRowId}
-                isOpen={openRowId === notification.id}
-                setOpenRowId={setOpenRowId}
-                toggleNotificationReadState={toggleNotificationReadState}
-                notificationMutationBusy={notificationMutations.isBusy(`notification:${notification.id}:${notification.openedAt ? "unread" : "read"}`)}
-                reportMutationError={reportNotificationMutationError}
-                requestDeleteNotification={requestDeleteNotification}
-              />
-            ))}
+            {notifications.map((notification) => {
+              const mutationKey = notificationReadMutationKey(notification.id);
+              return (
+                <NotificationListRow
+                  key={notification.id}
+                  notification={notification}
+                  sourceId={sourceId}
+                  openRowId={openRowId}
+                  isOpen={openRowId === notification.id}
+                  setOpenRowId={setOpenRowId}
+                  toggleNotificationReadState={toggleNotificationReadState}
+                  notificationMutationKey={mutationKey}
+                  notificationMutationBusy={notificationMutations.isBusy(mutationKey)}
+                  reportMutationError={reportNotificationMutationError}
+                  requestDeleteNotification={requestDeleteNotification}
+                />
+              );
+            })}
           </DataList>
         </Panel>
       ) : null}
