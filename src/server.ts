@@ -269,6 +269,7 @@ function createListenWebAppServer(
   const server = createWebAppServer<ListenRealtimeEvent>({
     appName: "Listen",
     envPrefix: "LISTEN",
+    runtimeConfig,
     web: {
       icons: {
         favicon: { src: listenIcon192Path, sizes: "192x192", type: "image/png" },
@@ -289,33 +290,40 @@ function createListenWebAppServer(
       [SERVICE_WORKER_PATH]: { GET: serviceWorkerResponse },
     },
   });
-  Object.assign(server.config, runtimeConfig);
-  if (runtimeConfig.logLevelFromEnv) {
-    setLogLevel(runtimeConfig.logLevel);
-  }
   return server;
 }
 
-function applyRuntimeConfigOverrides(config: RuntimeConfig, overrides: Partial<RuntimeConfig>): RuntimeConfig {
+export interface ListenTestOptions {
+  host?: RuntimeConfig["host"];
+  port?: RuntimeConfig["port"];
+  dataDir?: RuntimeConfig["dataDir"];
+  passkeyDisabled?: RuntimeConfig["passkeyDisabled"];
+  sameOriginDisabled?: RuntimeConfig["sameOriginDisabled"];
+  logLevel?: RuntimeConfig["logLevel"];
+  publicBaseUrl?: RuntimeConfig["publicBaseUrl"];
+  trustProxy?: RuntimeConfig["trustProxy"];
+}
+
+function applyListenTestOptions(config: RuntimeConfig, options: ListenTestOptions): RuntimeConfig {
   return {
     ...config,
-    host: overrides.host ?? config.host,
-    port: overrides.port ?? config.port,
-    dataDir: overrides.dataDir ?? config.dataDir,
-    passkeyDisabled: overrides.passkeyDisabled ?? config.passkeyDisabled,
-    sameOriginDisabled: overrides.sameOriginDisabled ?? config.sameOriginDisabled,
-    logLevel: overrides.logLevel ?? config.logLevel,
-    logLevelFromEnv: overrides.logLevel === undefined ? config.logLevelFromEnv : true,
-    publicBaseUrl: overrides.publicBaseUrl === undefined ? config.publicBaseUrl : overrides.publicBaseUrl,
-    trustProxy: overrides.trustProxy ?? config.trustProxy,
+    host: options.host ?? config.host,
+    port: options.port ?? config.port,
+    dataDir: options.dataDir ?? config.dataDir,
+    passkeyDisabled: options.passkeyDisabled ?? config.passkeyDisabled,
+    sameOriginDisabled: options.sameOriginDisabled ?? config.sameOriginDisabled,
+    logLevel: options.logLevel ?? config.logLevel,
+    logLevelFromEnv: options.logLevel === undefined ? config.logLevelFromEnv : true,
+    publicBaseUrl: options.publicBaseUrl === undefined ? config.publicBaseUrl : options.publicBaseUrl,
+    trustProxy: options.trustProxy ?? config.trustProxy,
   };
 }
 
 export function createFetchHandler(
-  overrides: Partial<RuntimeConfig> = {},
+  testOptions: ListenTestOptions = {},
   options: ListenServerOptions = {},
 ): (req: Request, server?: Server<WebAppWebSocketData>) => Promise<Response | undefined> {
-  const runtimeConfig = applyRuntimeConfigOverrides(readRuntimeConfig({ appName: "Listen", envPrefix: "LISTEN" }), overrides);
+  const runtimeConfig = applyListenTestOptions(readRuntimeConfig({ appName: "Listen", envPrefix: "LISTEN" }), testOptions);
   const handlerApp = createListenWebAppServer(runtimeConfig, options);
   return (req, server) => handlerApp.handleRequest(req, server);
 }

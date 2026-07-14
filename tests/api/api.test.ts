@@ -1,11 +1,13 @@
 import "./../setup";
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import type { RuntimeConfig } from "@pablozaiden/webapp/server";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { sqliteWebAppStore, type UserRecord } from "@pablozaiden/webapp/server";
 import { sourceMutationResponseSchema, sourceResponseSchema, type SourceMutationResponse } from "@listen/contracts";
 import { BROWSER_PUSH_ENDPOINT_MAX_CHARS, LIST_NOTIFICATIONS_DEFAULT_LIMIT, LIST_NOTIFICATIONS_MAX_LIMIT, WEBHOOK_JSON_BODY_MAX_BYTES } from "@listen/shared";
-import { createFetchHandler, getWebhookCallerKey } from "../../src/server";
+import { createFetchHandler, getWebhookCallerKey, type ListenTestOptions } from "../../src/server";
 import { setBrowserPushSenderForTests } from "../../src/core/browser-push";
 import { getLogLevel } from "../../src/core/logger";
 import { deleteSourceAndNotifications } from "../../src/core/sources";
@@ -13,8 +15,8 @@ import { createWebhookRateLimiter, type WebhookRateLimitOptions } from "../../sr
 import { getBrowserPushSubscriptionByEndpoint, markBrowserPushSubscriptionFailed } from "../../src/persistence/browser-push";
 import { getDatabase } from "../../src/persistence/database";
 
-async function request(path: string, init?: RequestInit, config?: Partial<RuntimeConfig>): Promise<Response> {
-  const handler = createFetchHandler({ passkeyDisabled: true, sameOriginDisabled: true, ...config });
+async function request(path: string, init?: RequestInit, options?: ListenTestOptions): Promise<Response> {
+  const handler = createFetchHandler({ passkeyDisabled: true, sameOriginDisabled: true, ...options });
   const response = await handler(new Request(`http://localhost${path}`, init));
   if (!response) {
     throw new Error("Request did not return a response");
@@ -266,50 +268,71 @@ describe("API", () => {
     expect(await json<{ logLevel: { level: string; fromEnv: boolean } }>(response)).toMatchObject({ logLevel: { level: "debug", fromEnv: true } });
   });
 
-  test("fetch handler runtime overrides stay isolated without mutating the environment", async () => {
-    const envNames = [
-      "LISTEN_HOST",
-      "LISTEN_PORT",
-      "LISTEN_DATA_DIR",
-      "LISTEN_DISABLE_PASSKEY",
-      "LISTEN_DISABLE_SAME_ORIGIN_CHECK",
-      "LISTEN_LOG_LEVEL",
-      "LISTEN_PUBLIC_BASE_URL",
-      "LISTEN_TRUST_PROXY",
-      "LISTEN_TRUST_PROXY_HEADERS",
-      "LISTEN_TRUST_PROXY_CHAIN",
-    ];
-    const initialEnvironment = new Map(envNames.map((name) => [name, process.env[name]]));
-    const firstHandler = createFetchHandler({
-      host: "127.0.0.1",
-      port: 3101,
-      logLevel: "debug",
-      publicBaseUrl: "https://first.example",
-      trustProxy: { enabled: true, headers: ["proto"], chain: "first" },
-    });
-    const secondHandler = createFetchHandler({
-      host: "127.0.0.1",
-      port: 3102,
-      logLevel: "warn",
-      publicBaseUrl: "https://second.example",
-      trustProxy: { enabled: true, headers: ["host"], chain: "last" },
-    });
+  test("fetch handler runtime options stay isolated across construction and requests", async () => {
+    const firstDataDir = mkdtempSync(join(tmpdir(), "listen-first-handler-"));
+    const secondDataDir = mkdtempSync(join(tmpdir(), "listen-second-handler-"));
 
-    for (const name of envNames) {
-      expect(process.env[name]).toBe(initialEnvironment.get(name));
+    try {
+      const firstHandler = createFetchHandler({
+        host: "127.0.0.1",
+        port: 3101,
+        dataDir: firstDataDir,
+        passkeyDisabled: true,
+        sameOriginDisabled: true,
+        logLevel: "debug",
+        publicBaseUrl: "https://first.example",
+        trustProxy: { enabled: true, headers: ["prefix"], chain: "first" },
+      });
+      expect(existsSync(join(firstDataDir, "listen.db"))).toBe(true);
+      expect(getLogLevel()).toBe("debug");
+
+      const firstConfig = await firstHandler(new Request("http://localhost/api/config"));
+      expect(firstConfig?.status).toBe(200);
+      expect(await json<{ logLevel: { level: string; fromEnv: boolean }; passkeyAuth: { passkeyDisabled: boolean } }>(firstConfig!)).toMatchObject({
+        logLevel: { level: "debug", fromEnv: true },
+        passkeyAuth: { passkeyDisabled: true },
+      });
+      const firstResponse = await firstHandler(new Request("http://localhost/api/sources", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-forwarded-prefix": "/first/",
+        },
+        body: JSON.stringify({ name: "First" }),
+      }));
+      expect(firstResponse?.status).toBe(201);
+      expect((await parseSourceMutationResponse(firstResponse!)).webhookUrl).toMatch(/^https:\/\/first\.example\/first\/api\/webhooks\//);
+
+      const secondHandler = createFetchHandler({
+        host: "127.0.0.1",
+        port: 3102,
+        dataDir: secondDataDir,
+        passkeyDisabled: true,
+        sameOriginDisabled: true,
+        logLevel: "warn",
+        publicBaseUrl: "https://second.example",
+        trustProxy: { enabled: true, headers: ["host"], chain: "last" },
+      });
+      expect(existsSync(join(secondDataDir, "listen.db"))).toBe(true);
+      expect(getLogLevel()).toBe("warn");
+
+      const secondConfig = await secondHandler(new Request("http://localhost/api/config"));
+      expect(secondConfig?.status).toBe(200);
+      expect(await json<{ logLevel: { level: string; fromEnv: boolean }; passkeyAuth: { passkeyDisabled: boolean } }>(secondConfig!)).toMatchObject({
+        logLevel: { level: "warn", fromEnv: true },
+        passkeyAuth: { passkeyDisabled: true },
+      });
+      const secondResponse = await secondHandler(new Request("http://localhost/api/sources", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "Second" }),
+      }));
+      expect(secondResponse?.status).toBe(201);
+      expect((await parseSourceMutationResponse(secondResponse!)).webhookUrl).toContain("https://second.example/api/webhooks/");
+    } finally {
+      rmSync(firstDataDir, { recursive: true, force: true });
+      rmSync(secondDataDir, { recursive: true, force: true });
     }
-
-    const sourceRequest = (name: string): Request => new Request("http://localhost/api/sources", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
-    const firstResponse = await firstHandler(sourceRequest("First"));
-    const secondResponse = await secondHandler(sourceRequest("Second"));
-    expect(firstResponse?.status).toBe(201);
-    expect(secondResponse?.status).toBe(201);
-    expect((await parseSourceMutationResponse(firstResponse!)).webhookUrl).toContain("https://first.example/api/webhooks/");
-    expect((await parseSourceMutationResponse(secondResponse!)).webhookUrl).toContain("https://second.example/api/webhooks/");
   });
 
   test("fetch handler includes the trusted proxy prefix in webhook URLs", async () => {
