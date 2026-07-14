@@ -28,7 +28,10 @@ export type InboxViewProps = {
   route: WebAppRoute;
   refreshSources: () => Promise<void>;
   requestConfirm: (confirm: ConfirmState) => void;
-  notificationRefreshToken: number;
+  notificationRefreshRequest: {
+    token: number;
+    reset: boolean;
+  };
   notificationActions: NotificationActions;
 };
 
@@ -36,7 +39,7 @@ export function InboxView({
   route,
   refreshSources,
   requestConfirm,
-  notificationRefreshToken,
+  notificationRefreshRequest,
   notificationActions,
 }: InboxViewProps) {
   const toast = useToast();
@@ -72,14 +75,14 @@ export function InboxView({
     },
   });
 
-  const lastNotificationRefreshToken = useRef(notificationRefreshToken);
+  const lastNotificationRefreshToken = useRef(notificationRefreshRequest.token);
   useEffect(() => {
-    if (lastNotificationRefreshToken.current === notificationRefreshToken) return;
-    lastNotificationRefreshToken.current = notificationRefreshToken;
-    void refreshNotifications().catch((refreshError) => {
+    if (lastNotificationRefreshToken.current === notificationRefreshRequest.token) return;
+    lastNotificationRefreshToken.current = notificationRefreshRequest.token;
+    void refreshNotifications({ reset: notificationRefreshRequest.reset }).catch((refreshError) => {
       toast.error(mutationErrorMessage(refreshError, "Could not refresh notifications."));
     });
-  }, [notificationRefreshToken, refreshNotifications, toast]);
+  }, [notificationRefreshRequest, refreshNotifications, toast]);
 
   useEffect(() => {
     if (!openRowId) return undefined;

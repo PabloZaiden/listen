@@ -16,7 +16,7 @@ import { buildInboxActions } from "./actions/inbox-actions";
 import { buildNotificationActions, requestNotificationDelete } from "./actions/notification-actions";
 import { BrowserPushSettings } from "./browserPushSettings";
 import { useConfirmation } from "./hooks/use-confirmation";
-import { useNotificationActions } from "./hooks/use-notifications";
+import { useNotificationActions, type NotificationRefreshOptions } from "./hooks/use-notifications";
 import { useSources } from "./hooks/use-sources";
 import { InboxView } from "./routes/inbox";
 import { NotificationView } from "./routes/notification";
@@ -34,12 +34,18 @@ function ListenApp(): React.ReactElement {
   const { sources, refresh: refreshSources, createSource, rotateSourceToken, deleteSource: deleteSourceRequest } = useSources();
   const notificationActions = useNotificationActions();
   const { confirmState, confirmBusy, requestConfirm, closeConfirm, runConfirm } = useConfirmation();
-  const [notificationRefreshToken, setNotificationRefreshToken] = useState(0);
+  const [notificationRefreshRequest, setNotificationRefreshRequest] = useState({
+    token: 0,
+    reset: false,
+  });
   const [currentRoute, setCurrentRoute] = useState<WebAppRoute>({ view: "inbox" });
   const headerMutations = useMutationTracker();
 
-  const requestNotificationRefresh = useCallback((): void => {
-    setNotificationRefreshToken((current) => current + 1);
+  const requestNotificationRefresh = useCallback((options: NotificationRefreshOptions = {}): void => {
+    setNotificationRefreshRequest((current) => ({
+      token: current.token + 1,
+      reset: options.reset === true,
+    }));
   }, []);
 
   function selectedSourceName(sourceId: string | undefined): string | undefined {
@@ -70,7 +76,7 @@ function ListenApp(): React.ReactElement {
       successMessage: "Notifications deleted.",
       action: async () => {
         await notificationActions.deleteAll(sourceId);
-        requestNotificationRefresh();
+        requestNotificationRefresh({ reset: true });
       },
     });
   }
@@ -144,7 +150,7 @@ function ListenApp(): React.ReactElement {
         route={route}
         refreshSources={refreshSources}
         requestConfirm={requestConfirm}
-        notificationRefreshToken={notificationRefreshToken}
+        notificationRefreshRequest={notificationRefreshRequest}
         notificationActions={notificationActions}
       />
     ),
@@ -159,7 +165,7 @@ function ListenApp(): React.ReactElement {
         requestConfirm={requestConfirm}
       />
     ),
-  }), [createSource, deleteSourceRequest, notificationActions, notificationRefreshToken, refreshSources, requestConfirm, rotateSourceToken, sources]);
+  }), [createSource, deleteSourceRequest, notificationActions, notificationRefreshRequest, refreshSources, requestConfirm, rotateSourceToken, sources]);
 
   return (
     <>

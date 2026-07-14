@@ -68,6 +68,17 @@ export function mergeNotificationPage(
   };
 }
 
+export function refreshNotificationCollection(
+  state: NotificationCollectionState,
+  response: NotificationListResponse,
+  reset = false,
+): NotificationCollectionState {
+  if (reset || response.pagination.total === 0) {
+    return createNotificationCollectionState(response, state.sourceId);
+  }
+  return mergeNotificationPage(state, response);
+}
+
 export function replaceNotification(
   state: NotificationCollectionState,
   notification: NotificationListItem,

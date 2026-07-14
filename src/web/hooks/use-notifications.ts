@@ -3,10 +3,9 @@ import type { NotificationDetail, NotificationListItem } from "@listen/contracts
 import { LIST_NOTIFICATIONS_DEFAULT_LIMIT } from "@listen/shared";
 import { appJson } from "@pablozaiden/webapp/web";
 import {
-  createNotificationCollectionState,
-  mergeNotificationPage,
   removeNotification,
   replaceNotification,
+  refreshNotificationCollection,
   resetNotificationCollection,
   type NotificationCollectionState,
   type NotificationListResponse,
@@ -74,13 +73,17 @@ export function useNotificationActions(): NotificationActions {
   );
 }
 
+export type NotificationRefreshOptions = {
+  reset?: boolean;
+};
+
 export type NotificationLoader = {
   result?: NotificationCollectionState;
   loading: boolean;
   loadingMore: boolean;
   error?: Error;
   loadMoreError?: Error;
-  refresh: () => Promise<void>;
+  refresh: (options?: NotificationRefreshOptions) => Promise<void>;
   retry: () => Promise<void>;
   loadNext: () => Promise<void>;
   updateNotification: (notification: NotificationListItem) => void;
@@ -148,9 +151,7 @@ export function useNotifications(sourceId?: string): NotificationLoader {
     try {
       const response = await requestPage(0, controller.signal);
       if (!isCurrentRequest(controller, generation)) return;
-      const next = reset
-        ? createNotificationCollectionState(response, sourceId)
-        : mergeNotificationPage(collectionRef.current, response);
+      const next = refreshNotificationCollection(collectionRef.current, response, reset);
       commitCollection(next);
       setLoaded(true);
       syncAppBadgeFromUnreadCount(response.unreadCount);
@@ -166,8 +167,8 @@ export function useNotifications(sourceId?: string): NotificationLoader {
     }
   }, [requestPage, sourceId]);
 
-  const refresh = useCallback(async (): Promise<void> => {
-    await refreshInternal(false);
+  const refresh = useCallback(async (options: NotificationRefreshOptions = {}): Promise<void> => {
+    await refreshInternal(options.reset === true);
   }, [refreshInternal]);
 
   const retry = useCallback(async (): Promise<void> => {
@@ -186,7 +187,7 @@ export function useNotifications(sourceId?: string): NotificationLoader {
     try {
       const response = await requestPage(offset, controller.signal);
       if (!isCurrentRequest(controller, generation)) return;
-      commitCollection(mergeNotificationPage(collectionRef.current, response));
+      commitCollection(refreshNotificationCollection(collectionRef.current, response));
       syncAppBadgeFromUnreadCount(response.unreadCount);
       setError(undefined);
     } catch (requestError) {

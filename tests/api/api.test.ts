@@ -805,6 +805,12 @@ describe("API", () => {
     const all = await request("/api/notifications", { method: "DELETE" });
     const allBody = await json<{ deletedCount: number }>(all);
     expect(allBody.deletedCount).toBeGreaterThanOrEqual(1);
+    const afterAll = await json<{ notifications: unknown[]; unreadCount: number; pagination: { total: number } }>(
+      await request("/api/notifications"),
+    );
+    expect(afterAll.notifications).toHaveLength(0);
+    expect(afterAll.pagination.total).toBe(0);
+    expect(afterAll.unreadCount).toBe(0);
   });
 
   test("browser push routes are protected", async () => {
