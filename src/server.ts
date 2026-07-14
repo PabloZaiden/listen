@@ -15,7 +15,7 @@ import { createSource, deleteSourceAndNotifications, getSourceForWebhook, listSo
 import { BrowserPushSubscriptionConflictError, getBrowserPushConfig, getBrowserPushSubscriptionStatus, subscribeBrowserPush, unsubscribeBrowserPush } from "./core/browser-push";
 import { initializeDatabase } from "./persistence/database";
 import { LISTEN_VERSION } from "./version";
-import { checkGlobalWebhookRateLimit, checkSourceWebhookRateLimit, type WebhookRateLimitDecision } from "./core/webhook-rate-limit";
+import { createWebhookRateLimiter, type WebhookRateLimitDecision, type WebhookRateLimiter } from "./core/webhook-rate-limit";
 import { parseQuery, parseWebhookNotification, RequestBodyLimitError } from "./api/validation";
 
 type ListenRealtimeEvent = ResourceRealtimeEvent;
@@ -41,7 +41,24 @@ function rateLimitedResponse(decision: Extract<WebhookRateLimitDecision, { allow
   });
 }
 
-function createRoutes(runtimeConfig: RuntimeConfig) {
+type WebhookRequestServer = Pick<Server<unknown>, "requestIP">;
+export type WebhookCallerKeyResolver = (req: Request, server: WebhookRequestServer | undefined) => string;
+
+export function getWebhookCallerKey(req: Request, server: WebhookRequestServer | undefined): string {
+  // The framework's trustProxy settings do not expose a trusted client-address header.
+  return server?.requestIP(req)?.address?.trim() || "unknown";
+}
+
+interface ListenServerOptions {
+  webhookRateLimiter?: WebhookRateLimiter;
+  webhookCallerKeyResolver?: WebhookCallerKeyResolver;
+}
+
+function createRoutes(
+  runtimeConfig: RuntimeConfig,
+  webhookRateLimiter: WebhookRateLimiter,
+  webhookCallerKeyResolver: WebhookCallerKeyResolver,
+) {
   return defineRoutes<ListenRealtimeEvent>({
   "/api/sources": {
     auth: "user",
@@ -199,10 +216,15 @@ function createRoutes(runtimeConfig: RuntimeConfig) {
     sameOrigin: "never",
     requestSchema: webhookNotificationRequestSchema,
     async POST(req, ctx) {
-      const globalRateLimit = checkGlobalWebhookRateLimit();
-      if (!globalRateLimit.allowed) {
-        webhookLog.debug("Global webhook rate limit exceeded");
-        return rateLimitedResponse(globalRateLimit);
+      const callerRateLimit = webhookRateLimiter.checkCaller(webhookCallerKeyResolver(req, ctx.server));
+      if (!callerRateLimit.allowed) {
+        webhookLog.debug("Webhook caller rate limit exceeded");
+        return rateLimitedResponse(callerRateLimit);
+      }
+      const emergencyRateLimit = webhookRateLimiter.checkEmergencyGlobal();
+      if (!emergencyRateLimit.allowed) {
+        webhookLog.debug("Emergency global webhook rate limit exceeded");
+        return rateLimitedResponse(emergencyRateLimit);
       }
       const source = getSourceForWebhook(ctx.params.sourceId ?? "");
       if (!source) {
@@ -217,7 +239,7 @@ function createRoutes(runtimeConfig: RuntimeConfig) {
         webhookLog.warn("Webhook token invalid", { sourceId: source.id });
         return errorResponse(401, "invalid_webhook_token", "Webhook token is invalid");
       }
-      const sourceRateLimit = checkSourceWebhookRateLimit(source.id);
+      const sourceRateLimit = webhookRateLimiter.checkSource(source.id);
       if (!sourceRateLimit.allowed) {
         webhookLog.debug("Source webhook rate limit exceeded", { sourceId: source.id });
         return rateLimitedResponse(sourceRateLimit);
@@ -251,10 +273,15 @@ export function getWebAppServer(): WebAppServer<ListenRealtimeEvent> {
   return app;
 }
 
-function createListenWebAppServer(runtimeConfig: RuntimeConfig): WebAppServer<ListenRealtimeEvent> {
+function createListenWebAppServer(
+  runtimeConfig: RuntimeConfig,
+  options: ListenServerOptions = {},
+): WebAppServer<ListenRealtimeEvent> {
   const dataDir = runtimeConfig.dataDir;
   initializeDatabase(dataDir);
   const store = sqliteWebAppStore({ dataDir, fileName: "listen.db" });
+  const webhookRateLimiter = options.webhookRateLimiter ?? createWebhookRateLimiter();
+  const webhookCallerKeyResolver = options.webhookCallerKeyResolver ?? getWebhookCallerKey;
   const server = createWebAppServer<ListenRealtimeEvent>({
     appName: "Listen",
     envPrefix: "LISTEN",
@@ -273,7 +300,7 @@ function createListenWebAppServer(runtimeConfig: RuntimeConfig): WebAppServer<Li
     auth: { passkeys: true, apiKeys: true, deviceAuth: true },
     logLevel: { onChange: setLogLevel },
     realtime: { path: "/api/ws" },
-    routes: createRoutes(runtimeConfig),
+    routes: createRoutes(runtimeConfig, webhookRateLimiter, webhookCallerKeyResolver),
     publicRoutes: {
       [SERVICE_WORKER_PATH]: { GET: serviceWorkerResponse },
     },
@@ -300,9 +327,12 @@ function applyRuntimeConfigOverrides(config: RuntimeConfig, overrides: Partial<R
   };
 }
 
-export function createFetchHandler(overrides: Partial<RuntimeConfig> = {}): (req: Request, server?: Server<WebAppWebSocketData>) => Promise<Response | undefined> {
+export function createFetchHandler(
+  overrides: Partial<RuntimeConfig> = {},
+  options: ListenServerOptions = {},
+): (req: Request, server?: Server<WebAppWebSocketData>) => Promise<Response | undefined> {
   const runtimeConfig = applyRuntimeConfigOverrides(readRuntimeConfig({ appName: "Listen", envPrefix: "LISTEN" }), overrides);
-  const handlerApp = createListenWebAppServer(runtimeConfig);
+  const handlerApp = createListenWebAppServer(runtimeConfig, options);
   return (req, server) => handlerApp.handleRequest(req, server);
 }
 

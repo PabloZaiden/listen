@@ -14,6 +14,8 @@ All protected app APIs must use framework auth. The webhook endpoint is the only
 
 Multi-user ownership is mandatory in core and persistence APIs. Optional ownership must never implicitly mean global access. Deliberate public or administrative cross-user operations must use separately named, narrowly scoped functions, and database row types must remain aligned with `NOT NULL` ownership constraints instead of masking impossible nulls with empty identifiers.
 
+Public endpoint rate limits must isolate independent callers and tenants; attacker-controlled invalid traffic must not consume another user's primary allowance. In-memory limiter maps must expire inactive entries and enforce a hard size bound. Forwarded client identity may only be used through explicitly configured trusted-proxy behavior.
+
 ## TypeScript
 
 Keep strict types. Prefer shared contracts from `packages/contracts`, shared limits from `packages/shared`, and framework helpers from `@pablozaiden/webapp`. Use bracket notation for environment variables. All source code must be TypeScript; do not add JavaScript source files. Bun serves and executes TypeScript directly, including browser-facing entrypoints such as service workers.

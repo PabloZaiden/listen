@@ -4,10 +4,10 @@ import { createHash } from "node:crypto";
 import type { RuntimeConfig } from "@pablozaiden/webapp/server";
 import { sqliteWebAppStore, type UserRecord } from "@pablozaiden/webapp/server";
 import { BROWSER_PUSH_ENDPOINT_MAX_CHARS, LIST_NOTIFICATIONS_DEFAULT_LIMIT, LIST_NOTIFICATIONS_MAX_LIMIT, WEBHOOK_JSON_BODY_MAX_BYTES } from "@listen/shared";
-import { createFetchHandler } from "../../src/server";
+import { createFetchHandler, getWebhookCallerKey } from "../../src/server";
 import { setBrowserPushSenderForTests } from "../../src/core/browser-push";
-import { createLogger, getLogLevel } from "../../src/core/logger";
-import { resetWebhookRateLimitForTests, setWebhookRateLimitOptionsForTests } from "../../src/core/webhook-rate-limit";
+import { getLogLevel } from "../../src/core/logger";
+import { createWebhookRateLimiter, type WebhookRateLimitOptions } from "../../src/core/webhook-rate-limit";
 import { getBrowserPushSubscriptionByEndpoint } from "../../src/persistence/browser-push";
 import { getDatabase } from "../../src/persistence/database";
 
@@ -18,6 +18,41 @@ async function request(path: string, init?: RequestInit, config?: Partial<Runtim
     throw new Error("Request did not return a response");
   }
   return response;
+}
+
+interface WebhookTestClient {
+  setCallerKey(key: string): void;
+  request(path: string, init?: RequestInit): Promise<Response>;
+  webhook(webhookUrl: string, init: RequestInit): Promise<Response>;
+}
+
+function createWebhookTestClient(options: WebhookRateLimitOptions): WebhookTestClient {
+  let callerKey = "test-caller";
+  const handler = createFetchHandler(
+    { passkeyDisabled: true, sameOriginDisabled: true },
+    {
+      webhookRateLimiter: createWebhookRateLimiter(options),
+      webhookCallerKeyResolver: () => callerKey,
+    },
+  );
+
+  async function send(path: string, init?: RequestInit): Promise<Response> {
+    const response = await handler(new Request(`http://localhost${path}`, init));
+    if (!response) {
+      throw new Error("Request did not return a response");
+    }
+    return response;
+  }
+
+  return {
+    setCallerKey(key) {
+      callerKey = key;
+    },
+    request: send,
+    webhook(webhookUrl, init) {
+      return send(new URL(webhookUrl).pathname, init);
+    },
+  };
 }
 
 interface AuthenticatedTestUser {
@@ -289,6 +324,18 @@ describe("API", () => {
     expect((await json<{ webhookUrl: string }>(response!)).webhookUrl).toMatch(/^https:\/\/public\.example\/listen\/api\/webhooks\//);
   });
 
+  test("webhook caller key uses the Bun peer address instead of forwarded headers", () => {
+    const request = new Request("http://localhost/api/webhooks/missing/token", {
+      headers: { "x-forwarded-for": "203.0.113.8" },
+    });
+    const server = {
+      requestIP: () => ({ address: "198.51.100.7", port: 4321, family: "IPv4" as const }),
+    };
+
+    expect(getWebhookCallerKey(request, server)).toBe("198.51.100.7");
+    expect(getWebhookCallerKey(request, undefined)).toBe("unknown");
+  });
+
   test("source creation returns webhook URL only from create and list omits it", async () => {
     const created = await createSource();
     expect(created.webhookUrl).toContain(`/api/webhooks/${created.source.id}/`);
@@ -503,21 +550,38 @@ describe("API", () => {
     expect(await json(response)).toMatchObject({ error: "invalid_json" });
   });
 
-  test("webhook global rate limit applies before source lookup", async () => {
-    setWebhookRateLimitOptionsForTests({ globalLimit: 2, sourceLimit: 100 });
+  test("webhook caller rate limit isolates invalid traffic by caller", async () => {
+    const client = createWebhookTestClient({
+      callerLimit: 2,
+      sourceLimit: 100,
+      emergencyGlobalLimit: 100,
+    });
+    const created = await createSource();
     const init = () => ({
       method: "POST",
       headers: { "content-type": "application/json" },
       body: "{}",
     });
 
-    expect((await request("/api/webhooks/missing/token", init())).status).toBe(404);
-    expect((await request("/api/webhooks/missing/token", init())).status).toBe(404);
-    await expectRateLimited(await request("/api/webhooks/missing/token", init()));
+    client.setCallerKey("caller-a");
+    expect((await client.request("/api/webhooks/missing/token", init())).status).toBe(404);
+    expect((await client.request("/api/webhooks/missing/token", init())).status).toBe(404);
+    await expectRateLimited(await client.request("/api/webhooks/missing/token", init()));
+
+    client.setCallerKey("caller-b");
+    expect((await client.webhook(created.webhookUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "A", shortDescription: "B", markdownContent: "C" }),
+    })).status).toBe(201);
   });
 
   test("webhook valid-source rate limit applies after token validation", async () => {
-    setWebhookRateLimitOptionsForTests({ globalLimit: 100, sourceLimit: 1 });
+    const client = createWebhookTestClient({
+      callerLimit: 100,
+      sourceLimit: 1,
+      emergencyGlobalLimit: 100,
+    });
     const created = await createSource();
     const init = () => ({
       method: "POST",
@@ -525,46 +589,52 @@ describe("API", () => {
       body: JSON.stringify({ title: "A", shortDescription: "B", markdownContent: "C" }),
     });
 
-    expect((await webhook(created.webhookUrl, init())).status).toBe(201);
-    await expectRateLimited(await webhook(created.webhookUrl, init()));
+    expect((await client.webhook(created.webhookUrl, init())).status).toBe(201);
+    await expectRateLimited(await client.webhook(created.webhookUrl, init()));
   });
 
-  test("webhook rate limit hits log at debug instead of warn", async () => {
-    const webhookLog = createLogger("api:webhooks");
-    const originalWarn = webhookLog.warn;
-    const originalDebug = webhookLog.debug;
-    const warnCalls: unknown[][] = [];
-    const debugCalls: unknown[][] = [];
-    webhookLog.warn = ((...args: unknown[]) => {
-      warnCalls.push(args);
-    }) as typeof webhookLog.warn;
-    webhookLog.debug = ((...args: unknown[]) => {
-      debugCalls.push(args);
-    }) as typeof webhookLog.debug;
+  test("invalid webhook tokens do not consume the validated-source bucket", async () => {
+    const client = createWebhookTestClient({
+      callerLimit: 100,
+      sourceLimit: 1,
+      emergencyGlobalLimit: 100,
+    });
+    const created = await createSource();
+    const init = {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "A", shortDescription: "B", markdownContent: "C" }),
+    };
 
-    try {
-      const init = () => ({
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ title: "A", shortDescription: "B", markdownContent: "C" }),
-      });
+    const invalid = await client.webhook(created.webhookUrl.replace(/[^/]+$/, "bad-token"), init);
+    expect(invalid.status).toBe(401);
+    expect((await client.webhook(created.webhookUrl, init)).status).toBe(201);
+    await expectRateLimited(await client.webhook(created.webhookUrl, init));
+  });
 
-      setWebhookRateLimitOptionsForTests({ globalLimit: 0, sourceLimit: 100 });
-      await expectRateLimited(await request("/api/webhooks/missing/token", init()));
-      expect(warnCalls).toHaveLength(0);
-      expect(debugCalls.some((call) => call[0] === "Global webhook rate limit exceeded")).toBe(true);
+  test("one valid source does not consume another source's rate limit", async () => {
+    const client = createWebhookTestClient({
+      callerLimit: 100,
+      sourceLimit: 1,
+      emergencyGlobalLimit: 100,
+    });
+    const first = await createSource();
+    const secondResponse = await request("/api/sources", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Second" }),
+    });
+    expect(secondResponse.status).toBe(201);
+    const second = await json<{ webhookUrl: string }>(secondResponse);
+    const init = () => ({
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "A", shortDescription: "B", markdownContent: "C" }),
+    });
 
-      debugCalls.length = 0;
-      setWebhookRateLimitOptionsForTests({ globalLimit: 100, sourceLimit: 0 });
-      const created = await createSource();
-      await expectRateLimited(await webhook(created.webhookUrl, init()));
-      expect(warnCalls).toHaveLength(0);
-      expect(debugCalls.some((call) => call[0] === "Source webhook rate limit exceeded")).toBe(true);
-    } finally {
-      resetWebhookRateLimitForTests();
-      webhookLog.warn = originalWarn;
-      webhookLog.debug = originalDebug;
-    }
+    expect((await client.webhook(first.webhookUrl, init())).status).toBe(201);
+    await expectRateLimited(await client.webhook(first.webhookUrl, init()));
+    expect((await client.webhook(second.webhookUrl, init())).status).toBe(201);
   });
 
   test("webhook rejects invalid token and deleted source", async () => {

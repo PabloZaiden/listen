@@ -6,7 +6,6 @@ import { closeDatabaseForTests, initializeDatabase } from "../src/persistence/da
 import { resetEventEmitterForTests } from "../src/core/event-emitter";
 import { setBrowserPushSenderForTests } from "../src/core/browser-push";
 import { setLogLevel } from "../src/core/logger";
-import { resetWebhookRateLimitForTests } from "../src/core/webhook-rate-limit";
 import { DEFAULT_LOG_LEVEL } from "@listen/shared";
 
 let dataDir: string;
@@ -20,12 +19,10 @@ beforeEach(() => {
   process.env["LISTEN_DISABLE_PASSKEY"] = "true";
   process.env["LISTEN_DISABLE_SAME_ORIGIN_CHECK"] = "true";
   delete process.env["LISTEN_LOG_LEVEL"];
-  resetWebhookRateLimitForTests();
   initializeDatabase(dataDir);
 });
 
 afterEach(() => {
-  resetWebhookRateLimitForTests();
   resetEventEmitterForTests();
   setBrowserPushSenderForTests();
   setLogLevel(DEFAULT_LOG_LEVEL);
