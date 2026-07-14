@@ -5,6 +5,8 @@ import { join } from "node:path";
 let database: Database | undefined;
 let databasePath: string | undefined;
 
+const LEGACY_NOTIFICATIONS_SCHEMA_ERROR = "Unsupported database schema: the notifications table is missing the read_at column. Use a fresh data directory or migrate the data out of band before starting Listen.";
+
 export function getDatabasePath(dataDir = process.env["LISTEN_DATA_DIR"] ?? "./data"): string {
   return join(dataDir, "listen.db");
 }
@@ -17,10 +19,17 @@ export function initializeDatabase(dataDir = process.env["LISTEN_DATA_DIR"] ?? "
   }
 
   database?.close();
-  database = new Database(nextPath, { create: true, strict: true });
-  databasePath = nextPath;
-  database.exec("PRAGMA foreign_keys = ON");
-  database.exec(`
+  database = undefined;
+  databasePath = undefined;
+  const nextDatabase = new Database(nextPath, { create: true, strict: true });
+  nextDatabase.exec("PRAGMA foreign_keys = ON");
+  const notificationsTable = nextDatabase.query("SELECT 1 AS found FROM sqlite_master WHERE type = 'table' AND name = 'notifications'").get();
+  const notificationsColumns = nextDatabase.query("PRAGMA table_info(notifications)").all() as Array<{ name: string }>;
+  if (notificationsTable && !notificationsColumns.some((column) => column.name === "read_at")) {
+    nextDatabase.close();
+    throw new Error(LEGACY_NOTIFICATIONS_SCHEMA_ERROR);
+  }
+  nextDatabase.exec(`
     CREATE TABLE IF NOT EXISTS preferences (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
@@ -84,7 +93,9 @@ export function initializeDatabase(dataDir = process.env["LISTEN_DATA_DIR"] ?? "
     CREATE INDEX IF NOT EXISTS idx_browser_push_user_next_attempt
     ON browser_push_subscriptions(user_id, next_attempt_at);
   `);
-  return database;
+  database = nextDatabase;
+  databasePath = nextPath;
+  return nextDatabase;
 }
 
 export function getDatabase(): Database {
