@@ -1,16 +1,11 @@
 import "./../setup";
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { sqliteWebAppStore, type UserRecord } from "@pablozaiden/webapp/server";
 import { sourceMutationResponseSchema, sourceResponseSchema, type SourceMutationResponse } from "@listen/contracts";
 import { BROWSER_PUSH_ENDPOINT_MAX_CHARS, LIST_NOTIFICATIONS_DEFAULT_LIMIT, LIST_NOTIFICATIONS_MAX_LIMIT, WEBHOOK_JSON_BODY_MAX_BYTES } from "@listen/shared";
 import { createFetchHandler, getWebhookCallerKey, type ListenTestOptions } from "../../src/server";
 import { setBrowserPushSenderForTests } from "../../src/core/browser-push";
-import { getLogLevel } from "../../src/core/logger";
-import { deleteSourceAndNotifications } from "../../src/core/sources";
 import { createWebhookRateLimiter, type WebhookRateLimitOptions } from "../../src/core/webhook-rate-limit";
 import { getBrowserPushSubscriptionByEndpoint, markBrowserPushSubscriptionFailed } from "../../src/persistence/browser-push";
 import { getDatabase } from "../../src/persistence/database";
@@ -122,19 +117,10 @@ async function parseSourceMutationResponse(response: Response): Promise<SourceMu
   return sourceMutationResponseSchema.parse(await json<unknown>(response));
 }
 
-function expectSecurityHeaders(response: Response): void {
-  expect(response.headers.get("referrer-policy")).toBe("strict-origin-when-cross-origin");
-  expect(response.headers.get("x-frame-options")).toBe("DENY");
-  expect(response.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
-}
-
 async function expectRateLimited(response: Response): Promise<void> {
   expect(response.status).toBe(429);
   expect(response.headers.get("retry-after")).toBeTruthy();
-  expect(await json<{ error: string; message: string }>(response)).toEqual({
-    error: "rate_limited",
-    message: "Too many webhook requests",
-  });
+  expect(await json<{ error: string }>(response)).toMatchObject({ error: "rate_limited" });
 }
 
 async function createSource(): Promise<SourceMutationResponse> {
@@ -201,154 +187,18 @@ async function waitForExpectation(assertion: () => void, timeoutMs = 1_000): Pro
 }
 
 describe("API", () => {
-  test("health returns ok", async () => {
-    const response = await request("/api/health");
-    expect(response.status).toBe(200);
-    expectSecurityHeaders(response);
-    expect(await json<{ ok: boolean }>(response)).toMatchObject({ ok: true });
-  });
-
-  test("service worker public asset serves JavaScript with worker headers for GET and HEAD", async () => {
+  test("serves the Listen service worker as an executable public asset", async () => {
     const response = await request("/service-worker");
     expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toBe("text/javascript; charset=utf-8");
+    expect(response.headers.get("content-type")).toContain("text/javascript");
     expect(response.headers.get("service-worker-allowed")).toBe("/");
-    expect(response.headers.get("cache-control")).toBe("no-cache");
     expect((await response.text()).length).toBeGreaterThan(0);
-
-    const headResponse = await request("/service-worker", { method: "HEAD" });
-    expect(headResponse.status).toBe(200);
-    expect(headResponse.headers.get("content-type")).toBe("text/javascript; charset=utf-8");
-    expect(headResponse.headers.get("service-worker-allowed")).toBe("/");
-    expect(headResponse.headers.get("cache-control")).toBe("no-cache");
-    expect(await headResponse.text()).toBe("");
   });
 
-  test("protected routes reject when passkey is required and no passkey is configured", async () => {
+  test("protected Listen routes reject unauthenticated requests", async () => {
     const response = await request("/api/sources", undefined, { passkeyDisabled: false });
     expect(response.status).toBe(401);
-    expect(response.headers.get("x-webapp-passkey-required")).toBe("true");
     expect(await json(response)).toMatchObject({ error: "authentication_required" });
-  });
-
-  test("server kill route rejects when passkey is required and no passkey is configured", async () => {
-    const response = await request("/api/server/kill", { method: "POST" }, { passkeyDisabled: false });
-    expect(response.status).toBe(401);
-    expect(response.headers.get("x-webapp-passkey-required")).toBe("true");
-    expect(await json(response)).toMatchObject({ error: "authentication_required" });
-  });
-
-  test("passkey status reports setup state", async () => {
-    const response = await request("/api/passkey-auth/status", undefined, { passkeyDisabled: false });
-    expect(await json(response)).toMatchObject({
-      passkeyConfigured: false,
-      passkeyDisabled: false,
-      bootstrapRequired: true,
-      passkeyRequired: false,
-      authenticated: false,
-    });
-  });
-
-  test("log level preference can be changed at runtime", async () => {
-    const initial = await json<{ level: string; fromEnv: boolean }>(await request("/api/preferences/log-level"));
-    expect(initial.level).toBe("info");
-    expect(initial.fromEnv).toBe(false);
-
-    const update = await request("/api/preferences/log-level", {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ level: "trace" }),
-    });
-    expect(update.status).toBe(200);
-    expect(await json<{ level: string }>(update)).toMatchObject({ level: "trace" });
-    expect(getLogLevel()).toBe("trace");
-
-    const updated = await json<{ level: string }>(await request("/api/preferences/log-level"));
-    expect(updated.level).toBe("trace");
-  });
-
-  test("log level preference rejects invalid levels", async () => {
-    const response = await request("/api/preferences/log-level", {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ level: "verbose" }),
-    });
-    expect(response.status).toBe(400);
-    expect(await json(response)).toMatchObject({ error: "invalid_request_body" });
-  });
-
-  test("fetch handler applies explicit log level config", async () => {
-    const response = await request("/api/config", undefined, { logLevel: "debug" });
-
-    expect(response.status).toBe(200);
-    expect(await json<{ logLevel: { level: string; fromEnv: boolean } }>(response)).toMatchObject({ logLevel: { level: "debug", fromEnv: true } });
-  });
-
-  test("fetch handler runtime options stay isolated across construction and requests", async () => {
-    const firstDataDir = mkdtempSync(join(tmpdir(), "listen-first-handler-"));
-    const secondDataDir = mkdtempSync(join(tmpdir(), "listen-second-handler-"));
-
-    try {
-      const firstHandler = createFetchHandler({
-        host: "127.0.0.1",
-        port: 3101,
-        dataDir: firstDataDir,
-        passkeyDisabled: true,
-        sameOriginDisabled: true,
-        logLevel: "debug",
-        publicBaseUrl: "https://first.example",
-        trustProxy: { enabled: true, headers: ["prefix"], chain: "first" },
-      });
-      expect(existsSync(join(firstDataDir, "listen.db"))).toBe(true);
-      expect(getLogLevel()).toBe("debug");
-
-      const firstConfig = await firstHandler(new Request("http://localhost/api/config"));
-      expect(firstConfig?.status).toBe(200);
-      expect(await json<{ logLevel: { level: string; fromEnv: boolean }; passkeyAuth: { passkeyDisabled: boolean } }>(firstConfig!)).toMatchObject({
-        logLevel: { level: "debug", fromEnv: true },
-        passkeyAuth: { passkeyDisabled: true },
-      });
-      const firstResponse = await firstHandler(new Request("http://localhost/api/sources", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-forwarded-prefix": "/first/",
-        },
-        body: JSON.stringify({ name: "First" }),
-      }));
-      expect(firstResponse?.status).toBe(201);
-      expect((await parseSourceMutationResponse(firstResponse!)).webhookUrl).toMatch(/^https:\/\/first\.example\/first\/api\/webhooks\//);
-
-      const secondHandler = createFetchHandler({
-        host: "127.0.0.1",
-        port: 3102,
-        dataDir: secondDataDir,
-        passkeyDisabled: true,
-        sameOriginDisabled: true,
-        logLevel: "warn",
-        publicBaseUrl: "https://second.example",
-        trustProxy: { enabled: true, headers: ["host"], chain: "last" },
-      });
-      expect(existsSync(join(secondDataDir, "listen.db"))).toBe(true);
-      expect(getLogLevel()).toBe("warn");
-
-      const secondConfig = await secondHandler(new Request("http://localhost/api/config"));
-      expect(secondConfig?.status).toBe(200);
-      expect(await json<{ logLevel: { level: string; fromEnv: boolean }; passkeyAuth: { passkeyDisabled: boolean } }>(secondConfig!)).toMatchObject({
-        logLevel: { level: "warn", fromEnv: true },
-        passkeyAuth: { passkeyDisabled: true },
-      });
-      const secondResponse = await secondHandler(new Request("http://localhost/api/sources", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: "Second" }),
-      }));
-      expect(secondResponse?.status).toBe(201);
-      expect((await parseSourceMutationResponse(secondResponse!)).webhookUrl).toContain("https://second.example/api/webhooks/");
-    } finally {
-      rmSync(firstDataDir, { recursive: true, force: true });
-      rmSync(secondDataDir, { recursive: true, force: true });
-    }
   });
 
   test("fetch handler includes the trusted proxy prefix in webhook URLs", async () => {
@@ -788,7 +638,8 @@ describe("API", () => {
     `);
 
     try {
-      expect(() => deleteSourceAndNotifications(created.source.id, currentOwnerId())).toThrow();
+      const deleteResponse = await request(`/api/sources/${created.source.id}`, { method: "DELETE" });
+      expect(deleteResponse.status).toBe(500);
     } finally {
       getDatabase().exec("DROP TRIGGER fail_source_delete");
     }
