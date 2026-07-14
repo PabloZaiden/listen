@@ -63,3 +63,9 @@ Do not use `INSERT OR REPLACE`. Do not interpolate untrusted values into SQL. Us
 ## Common Patterns
 
 Use Route -> Core -> Persistence imports. Use shared zod schemas for validation. Use `@pablozaiden/installer` for update behavior. Use the framework shell/settings/title-bar action menu/realtime/auth primitives instead of rebuilding them in Listen. Route components rendered by `WebAppRoot.routes` must use `Page` as the top-level wrapper, and app code must not render directly into `.wapp-main-content` or duplicate the fixed framework title with an app-local heading. Route-backed entity actions should live on `SidebarNode.actions`; use `WebAppRoot.header.getActions` only for actions that are not owned by an active sidebar node. Framework dialogs handle Enter/Escape, destructive/delete actions are red and last, sidebar badges are compact status dots, and header action buttons must stay visible while titles/subtitles truncate. When in doubt, inspect `github.com/pablozaiden/clanky` and follow the closest pattern unless a current Listen requirement differs.
+
+## Pagination and Realtime Collections
+
+- When an API returns pagination metadata, every consuming UI must either expose the complete paginated dataset or document an intentional product limit.
+- Do not hard-code the first page and ignore `nextOffset`, cursors, or equivalent continuation metadata.
+- Realtime refresh logic for paginated collections must define deduplication, ordering, and preservation of already loaded pages.
