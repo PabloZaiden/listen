@@ -35,10 +35,14 @@ State-transition events must describe the resulting state accurately.
 ## Error Handling
 
 Never fail silently. Do not leave empty catch blocks. Surface structured API errors with stable machine-readable error codes. Avoid duplicate logging across layers.
+Promises started by UI event handlers must have explicit success and failure paths; do not discard a rejecting mutation promise.
+Use the framework `useToast()` for transient mutation success and failure feedback. Keep inline errors for persistent form or page state and do not add app-owned toast infrastructure.
 
 ## Async Patterns
 
 Use `async`/`await` for I/O. Keep event delivery synchronous and best-effort; a listener failure must not prevent delivery to other listeners.
+Disable or guard mutation controls while their requests are active, especially destructive confirmation actions, so repeated activation cannot submit duplicates.
+After a successful mutation, reconcile the initiating client from the response or an explicit local refresh; do not depend solely on realtime delivery for the current client.
 
 ## React Components
 
