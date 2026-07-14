@@ -15,6 +15,13 @@ function foreignKeys(table: string): Array<{ from: string; table: string; on_del
   return getDatabase().query(`PRAGMA foreign_key_list(${table})`).all() as Array<{ from: string; table: string; on_delete: string }>;
 }
 
+function indexNames(table: string): string[] {
+  const rows = getDatabase().query(
+    "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = $table",
+  ).all({ table }) as Array<{ name: string }>;
+  return rows.map((row) => row.name);
+}
+
 describe("database schema", () => {
   test("uses the clean framework-owned auth baseline", () => {
     const tables = tableNames();
@@ -51,5 +58,15 @@ describe("database schema", () => {
 
     expect(columns).toContain("token_hash");
     expect(columns).not.toContain("token");
+  });
+
+  test("does not retain unreachable disabled state", () => {
+    expect(columnInfo("webhook_sources").map((column) => column.name)).not.toContain("disabled_at");
+    expect(columnInfo("browser_push_subscriptions").map((column) => column.name)).not.toContain("disabled_at");
+
+    const pushIndexes = indexNames("browser_push_subscriptions");
+    expect(pushIndexes).not.toContain("idx_browser_push_active_next_attempt");
+    expect(pushIndexes).not.toContain("idx_browser_push_user_active_next_attempt");
+    expect(pushIndexes).toContain("idx_browser_push_user_next_attempt");
   });
 });

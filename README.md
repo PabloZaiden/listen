@@ -27,7 +27,7 @@ Native runs default to `localhost:3000`. Docker uses `0.0.0.0:8080` and stores d
 
 ## Browser notifications
 
-The Settings view includes per-browser Web Push subscriptions. Click "Enable on this browser" to allow Listen to send system notifications to the current browser profile. Repeat this on each desktop or mobile browser where you want notifications. If the browser is already subscribed, Settings shows a disable action for only that browser.
+The Settings view includes per-browser Web Push subscriptions. Click "Enable on this browser" to allow Listen to send system notifications to the current browser profile. Repeat this on each desktop or mobile browser where you want notifications. If the browser is already subscribed, Settings shows an unsubscribe action for only that browser.
 
 The webapp framework serves Listen's PWA metadata, including `/site.webmanifest`, app icons, and the apple touch icon used by macOS Dock and iPhone Home Screen installs. Browser notifications use standards-based Web Push with a TypeScript service worker served directly at `/service-worker`. VAPID keys are generated once and persisted in the data directory. The public origin used for VAPID and the public request base used for webhook URLs are resolved by the webapp framework from `LISTEN_PUBLIC_BASE_URL` or the direct/trusted-proxy request context. Local `http:` development uses a `mailto:` VAPID subject because Web Push requires VAPID subjects to be `https:` or `mailto:`.
 
@@ -44,6 +44,8 @@ Use the Sources view in the UI. Each source gets a unique long random token embe
 ```text
 https://listen.example.com/api/webhooks/source-id/token
 ```
+
+Deleting a source permanently removes the source and its notifications. Create a new source if a replacement webhook URL is needed.
 
 ## Configuring the CLI for agents
 
@@ -159,7 +161,7 @@ In another terminal, seed realistic sources and notifications through the public
 bun run seed:demo
 ```
 
-Open `http://127.0.0.1:3000/`. `LISTEN_DEMO_RESET=true bun run seed:demo` clears notifications first, but source reset requires a fresh `LISTEN_DATA_DIR` because Listen only supports soft-disabling sources.
+Open `http://127.0.0.1:3000/`. `LISTEN_DEMO_RESET=true bun run seed:demo` clears notifications first but leaves sources in place; use a fresh `LISTEN_DATA_DIR` for a fully clean demo dataset.
 
 ## Release artifacts
 

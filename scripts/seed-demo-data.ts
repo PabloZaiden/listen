@@ -165,7 +165,7 @@ async function main(): Promise<void> {
 
   if (reset) {
     await apiJson(`${baseUrl}/api/notifications`, { method: "DELETE" }, "notification reset");
-    console.warn("LISTEN_DEMO_RESET cleared notifications. Sources are soft-disabled only by the app API; use a fresh LISTEN_DATA_DIR for a fully clean demo dataset.");
+    console.warn("LISTEN_DEMO_RESET cleared notifications. It does not delete sources; use a fresh LISTEN_DATA_DIR for a fully clean demo dataset.");
   }
 
   const createdSources: SourceMutationResponse[] = [];

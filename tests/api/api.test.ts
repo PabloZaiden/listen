@@ -1115,7 +1115,7 @@ describe("API", () => {
     const transferred = getBrowserPushSubscriptionByEndpoint(endpoint, userB.userId);
     expect(transferred?.lastFailureAt).toBeUndefined();
     expect(transferred?.nextAttemptAt).toBeUndefined();
-    expect(transferred?.disabledAt).toBeUndefined();
+    expect(transferred).not.toHaveProperty("disabledAt");
 
     const lookupFromA = await requestAs(userA, "/api/browser-push/subscriptions/lookup", {
       method: "POST",

@@ -832,7 +832,6 @@ function SourcesView({ sources, refreshSources, requestConfirm }: { sources: Sou
                 key={source.id}
                 title={source.name}
                 description={source.lastUsedAt ? `Last used ${new Date(source.lastUsedAt).toLocaleString()}` : "Not used yet"}
-                badge={source.disabledAt ? "disabled" : undefined}
                 actions={(
                   <ActionMenu
                     ariaLabel={`Actions for ${source.name}`}

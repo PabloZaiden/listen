@@ -26,7 +26,6 @@ export function toSourceResponse(source: PersistedSource): SourceResponse {
     createdAt: source.createdAt,
     updatedAt: source.updatedAt,
     lastUsedAt: source.lastUsedAt,
-    disabledAt: source.disabledAt,
   };
 }
 
@@ -54,8 +53,8 @@ export async function createSource(name: string, publicBaseUrl: string, userId: 
   };
 }
 
-export function listSources(includeDisabled: boolean, userId: string): SourceResponse[] {
-  return listPersistedSources(includeDisabled, requireUserId(userId)).map(toSourceResponse);
+export function listSources(userId: string): SourceResponse[] {
+  return listPersistedSources(requireUserId(userId)).map(toSourceResponse);
 }
 
 export function getSourceForWebhook(id: string): PersistedSource | undefined {
