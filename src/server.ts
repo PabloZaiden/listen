@@ -65,7 +65,7 @@ function createRoutes(
     requestSchema: createSourceRequestSchema,
     GET: (_req, ctx) => {
       const user = ctx.requireUser();
-      return jsonResponse({ sources: listSources(true, user.id) });
+      return jsonResponse({ sources: listSources(user.id) });
     },
     async POST(req, ctx) {
       const user = ctx.requireUser();
@@ -214,10 +214,6 @@ function createRoutes(
       if (!source) {
         webhookLog.warn("Webhook source not found", { sourceId: ctx.params.sourceId });
         return errorResponse(404, "source_not_found", "Webhook source was not found");
-      }
-      if (source.disabledAt) {
-        webhookLog.warn("Webhook source disabled", { sourceId: source.id });
-        return errorResponse(410, "source_disabled", "Webhook source is disabled");
       }
       if (!await verifyWebhookToken(ctx.params.token ?? "", source.tokenHash)) {
         webhookLog.warn("Webhook token invalid", { sourceId: source.id });

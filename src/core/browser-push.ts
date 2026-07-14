@@ -11,7 +11,7 @@ import {
   deleteBrowserPushSubscriptionByEndpoint,
   getBrowserPushSubscriptionByEndpoint,
   getPersistedVapidKeys,
-  listActiveBrowserPushSubscriptions,
+  listBrowserPushSubscriptionsForDelivery,
   markBrowserPushSubscriptionFailed,
   markBrowserPushSubscriptionSucceeded,
   setPersistedVapidKeys,
@@ -124,10 +124,9 @@ export function getBrowserPushSubscriptionStatus(endpoint: string, userId: strin
   log.trace("Browser push subscription status checked", {
     subscriptionId: subscription?.id,
     userId: ownerId,
-    subscribed: Boolean(subscription && !subscription.disabledAt),
-    disabled: Boolean(subscription?.disabledAt),
+    subscribed: Boolean(subscription),
   });
-  return { subscribed: Boolean(subscription && !subscription.disabledAt) };
+  return { subscribed: Boolean(subscription) };
 }
 
 export function unsubscribeBrowserPush(endpoint: string, userId: string): BrowserPushStatusResponse {
@@ -228,7 +227,7 @@ async function sendOneBrowserPush(subscription: PersistedBrowserPushSubscription
 
 export async function sendBrowserPushNotification(notification: NotificationListItem, unreadCount: number, publicOrigin: string, userId: string): Promise<void> {
   const ownerId = requireUserId(userId);
-  const subscriptions = listActiveBrowserPushSubscriptions(Date.now(), nowIso(), ownerId);
+  const subscriptions = listBrowserPushSubscriptionsForDelivery(Date.now(), nowIso(), ownerId);
   if (subscriptions.length === 0) {
     log.trace("Browser push fanout skipped because no active subscriptions are available", { notificationId: notification.id });
     return;

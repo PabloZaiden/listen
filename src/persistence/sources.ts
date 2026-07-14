@@ -9,7 +9,6 @@ export interface PersistedSource {
   createdAt: string;
   updatedAt: string;
   lastUsedAt?: string;
-  disabledAt?: string;
 }
 
 interface SourceRow {
@@ -20,7 +19,6 @@ interface SourceRow {
   created_at: string;
   updated_at: string;
   last_used_at: string | null;
-  disabled_at: string | null;
 }
 
 function mapSource(row: SourceRow): PersistedSource {
@@ -32,15 +30,14 @@ function mapSource(row: SourceRow): PersistedSource {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastUsedAt: row.last_used_at ?? undefined,
-    disabledAt: row.disabled_at ?? undefined,
   };
 }
 
 export function insertSource(source: PersistedSource): void {
   const userId = requireUserId(source.userId);
   getDatabase().query(`
-    INSERT INTO webhook_sources (id, user_id, name, token_hash, created_at, updated_at, last_used_at, disabled_at)
-    VALUES ($id, $userId, $name, $tokenHash, $createdAt, $updatedAt, $lastUsedAt, $disabledAt)
+    INSERT INTO webhook_sources (id, user_id, name, token_hash, created_at, updated_at, last_used_at)
+    VALUES ($id, $userId, $name, $tokenHash, $createdAt, $updatedAt, $lastUsedAt)
   `).run({
     id: source.id,
     userId,
@@ -49,17 +46,15 @@ export function insertSource(source: PersistedSource): void {
     createdAt: source.createdAt,
     updatedAt: source.updatedAt,
     lastUsedAt: source.lastUsedAt ?? null,
-    disabledAt: source.disabledAt ?? null,
   });
 }
 
-export function listSources(includeDisabled: boolean, userId: string): PersistedSource[] {
+export function listSources(userId: string): PersistedSource[] {
   const database = getDatabase();
   const ownerId = requireUserId(userId);
-  const sql = includeDisabled
-    ? "SELECT * FROM webhook_sources WHERE user_id = $userId ORDER BY created_at DESC, id DESC"
-    : "SELECT * FROM webhook_sources WHERE user_id = $userId AND disabled_at IS NULL ORDER BY created_at DESC, id DESC";
-  return (database.query(sql).all({ userId: ownerId }) as SourceRow[]).map(mapSource);
+  return (database.query(
+    "SELECT * FROM webhook_sources WHERE user_id = $userId ORDER BY created_at DESC, id DESC",
+  ).all({ userId: ownerId }) as SourceRow[]).map(mapSource);
 }
 
 export function getSourceById(id: string, userId: string): PersistedSource | undefined {

@@ -11,7 +11,6 @@ export const sourceResponseSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   lastUsedAt: z.string().optional(),
-  disabledAt: z.string().optional(),
 }).strict();
 
 export const sourceMutationResponseSchema = z.object({

@@ -25,7 +25,6 @@ export interface PersistedBrowserPushSubscription {
   lastFailureAt?: string;
   failureCount: number;
   nextAttemptAt?: string;
-  disabledAt?: string;
 }
 
 interface BrowserPushSubscriptionRow {
@@ -42,7 +41,6 @@ interface BrowserPushSubscriptionRow {
   last_failure_at: string | null;
   failure_count: number;
   next_attempt_at: string | null;
-  disabled_at: string | null;
 }
 
 export interface BrowserPushSubscriptionClaimResult {
@@ -65,7 +63,6 @@ function mapSubscription(row: BrowserPushSubscriptionRow): PersistedBrowserPushS
     lastFailureAt: row.last_failure_at ?? undefined,
     failureCount: row.failure_count,
     nextAttemptAt: row.next_attempt_at ?? undefined,
-    disabledAt: row.disabled_at ?? undefined,
   };
 }
 
@@ -95,11 +92,11 @@ export function claimBrowserPushSubscription(subscription: PersistedBrowserPushS
       database.query(`
         INSERT INTO browser_push_subscriptions (
           id, user_id, endpoint, p256dh, auth, expiration_time, user_agent, created_at, updated_at,
-          last_success_at, last_failure_at, failure_count, next_attempt_at, disabled_at
+          last_success_at, last_failure_at, failure_count, next_attempt_at
         )
         VALUES (
           $id, $userId, $endpoint, $p256dh, $auth, $expirationTime, $userAgent, $createdAt, $updatedAt,
-          NULL, NULL, 0, NULL, NULL
+          NULL, NULL, 0, NULL
         )
       `).run({
         id: subscription.id,
@@ -124,8 +121,7 @@ export function claimBrowserPushSubscription(subscription: PersistedBrowserPushS
           updated_at = $updatedAt,
           last_failure_at = NULL,
           failure_count = 0,
-          next_attempt_at = NULL,
-          disabled_at = NULL
+          next_attempt_at = NULL
         WHERE endpoint = $endpoint
       `).run({
         userId,
@@ -150,12 +146,11 @@ export function claimBrowserPushSubscription(subscription: PersistedBrowserPushS
   return claim.immediate();
 }
 
-export function listActiveBrowserPushSubscriptions(nowMs: number, nowIso: string, userId: string): PersistedBrowserPushSubscription[] {
+export function listBrowserPushSubscriptionsForDelivery(nowMs: number, nowIso: string, userId: string): PersistedBrowserPushSubscription[] {
   const ownerId = requireUserId(userId);
   const rows = getDatabase().query(`
     SELECT * FROM browser_push_subscriptions
-    WHERE disabled_at IS NULL
-      AND user_id = $userId
+    WHERE user_id = $userId
       AND (expiration_time IS NULL OR expiration_time > $nowMs)
       AND (next_attempt_at IS NULL OR next_attempt_at <= $nowIso)
     ORDER BY created_at ASC, id ASC

@@ -71,6 +71,12 @@ Use database constraints and foreign-key cascades as the single source of
 referential behavior; do not duplicate cascade deletes in application code.
 Run multi-step persistence mutations that must succeed together inside a
 database transaction.
+Every persisted state and public contract field must have a reachable write
+path and documented product meaning. Remove dead compatibility fields and
+infrastructure when they have no supported consumer.
+
+Application state delivery uses framework realtime as the single event system.
+Do not add or maintain a parallel app-owned event emitter.
 
 ## Testing
 
@@ -81,6 +87,9 @@ operations in application-level tests.
 ## Database Migrations
 
 Keep the base schema in `src/persistence/database.ts` for initial release. Future schema changes must use sequential idempotent migrations in `src/persistence/migrations`.
+Migrations must preserve supported data and ownership constraints, handle
+existing databases safely, and never restore removed legacy migrations as part
+of fresh-database initialization.
 
 ## Security Anti-Patterns to Avoid
 

@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { runMigrations } from "./migrations";
 
 let database: Database | undefined;
 let databasePath: string | undefined;
@@ -34,7 +35,6 @@ export function initializeDatabase(dataDir = process.env["LISTEN_DATA_DIR"] ?? "
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       last_used_at TEXT,
-      disabled_at TEXT,
       FOREIGN KEY (user_id) REFERENCES webapp_users(id) ON DELETE CASCADE
     );
 
@@ -67,7 +67,6 @@ export function initializeDatabase(dataDir = process.env["LISTEN_DATA_DIR"] ?? "
       last_failure_at TEXT,
       failure_count INTEGER NOT NULL DEFAULT 0,
       next_attempt_at TEXT,
-      disabled_at TEXT,
       FOREIGN KEY (user_id) REFERENCES webapp_users(id) ON DELETE CASCADE
     );
 
@@ -83,12 +82,10 @@ export function initializeDatabase(dataDir = process.env["LISTEN_DATA_DIR"] ?? "
     CREATE INDEX IF NOT EXISTS idx_notifications_opened_at
     ON notifications(opened_at);
 
-    CREATE INDEX IF NOT EXISTS idx_browser_push_active_next_attempt
-    ON browser_push_subscriptions(disabled_at, next_attempt_at);
-
-    CREATE INDEX IF NOT EXISTS idx_browser_push_user_active_next_attempt
-    ON browser_push_subscriptions(user_id, disabled_at, next_attempt_at);
+    CREATE INDEX IF NOT EXISTS idx_browser_push_user_next_attempt
+    ON browser_push_subscriptions(user_id, next_attempt_at);
   `);
+  runMigrations(database);
   return database;
 }
 
