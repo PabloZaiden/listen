@@ -51,6 +51,8 @@ jobs:
           curl -fsS -D /tmp/listen-dev-apple-icon-headers http://127.0.0.1:3018/webapp-apple-touch-icon.png >/dev/null
           grep -qi '^content-type: application/manifest+json' /tmp/listen-dev-manifest-headers
           grep -qi '^content-type: text/javascript' /tmp/listen-dev-sw-headers
+          grep -qi '^service-worker-allowed: /' /tmp/listen-dev-sw-headers
+          grep -qi '^cache-control: no-cache' /tmp/listen-dev-sw-headers
           grep -qi '^content-type: image/png' /tmp/listen-dev-icon-headers
           grep -qi '^content-type: image/png' /tmp/listen-dev-apple-icon-headers
       - run: |
@@ -87,6 +89,8 @@ jobs:
           curl -fsS -D /tmp/listen-apple-icon-headers http://127.0.0.1:3019/webapp-apple-touch-icon.png >/dev/null
           grep -qi '^content-type: application/manifest+json' /tmp/listen-manifest-headers
           grep -qi '^content-type: text/javascript' /tmp/listen-sw-headers
+          grep -qi '^service-worker-allowed: /' /tmp/listen-sw-headers
+          grep -qi '^cache-control: no-cache' /tmp/listen-sw-headers
           grep -qi '^content-type: image/png' /tmp/listen-icon-headers
           grep -qi '^content-type: image/png' /tmp/listen-apple-icon-headers
 
