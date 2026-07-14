@@ -98,6 +98,14 @@ LISTEN_TRUST_PROXY_CHAIN=first
 
 The proxy must strip client-supplied forwarded headers before setting the trusted values. `LISTEN_PUBLIC_BASE_URL` keeps passkey, webhook URL generation, and Web Push VAPID origins aligned with the browser-visible URL.
 
+## Webhook rate limiting and deployment
+
+Webhook ingestion uses independent 120-request-per-minute windows for the direct caller peer and each validated source. Caller and source buckets expire after five minutes and each in-memory map is capped at 10,000 entries. A separate 10,000-request-per-minute process-wide ceiling is an emergency safety valve, not the normal isolation mechanism.
+
+The limiter uses Bun's direct request peer address. The current framework trust-proxy configuration supports forwarded protocol, host, and prefix values for URL/origin handling, but does not make a forwarded client address trustworthy; Listen therefore does not parse `X-Forwarded-For` for rate-limit identity. Clients behind the same reverse proxy may share the caller bucket, while source-token buckets remain independent. Proxies must strip client-supplied forwarded headers before setting any trusted values.
+
+Limiter state is local to one process. Deployments with multiple Listen processes or replicas need shared rate-limit storage or equivalent coordination if limits must apply across all instances.
+
 ## Environment variables
 
 | Variable | Default | Description |
