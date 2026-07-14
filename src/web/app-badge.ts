@@ -9,7 +9,7 @@ type ListenAppBadgeUpdater = (
   warningSource: string,
 ) => Promise<void>;
 
-async function listenUpdateAppBadge(
+export async function listenUpdateAppBadge(
   badgeNavigator: ListenAppBadgeNavigator,
   unreadCount: number,
   warningSource: string,

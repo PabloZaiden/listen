@@ -208,6 +208,22 @@ describe("API", () => {
     expect(await json<{ ok: boolean }>(response)).toMatchObject({ ok: true });
   });
 
+  test("service worker public asset serves JavaScript with worker headers for GET and HEAD", async () => {
+    const response = await request("/service-worker");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("text/javascript; charset=utf-8");
+    expect(response.headers.get("service-worker-allowed")).toBe("/");
+    expect(response.headers.get("cache-control")).toBe("no-cache");
+    expect((await response.text()).length).toBeGreaterThan(0);
+
+    const headResponse = await request("/service-worker", { method: "HEAD" });
+    expect(headResponse.status).toBe(200);
+    expect(headResponse.headers.get("content-type")).toBe("text/javascript; charset=utf-8");
+    expect(headResponse.headers.get("service-worker-allowed")).toBe("/");
+    expect(headResponse.headers.get("cache-control")).toBe("no-cache");
+    expect(await headResponse.text()).toBe("");
+  });
+
   test("protected routes reject when passkey is required and no passkey is configured", async () => {
     const response = await request("/api/sources", undefined, { passkeyDisabled: false });
     expect(response.status).toBe(401);
@@ -600,6 +616,25 @@ describe("API", () => {
 
     expect(response.status).toBe(400);
     expect(await json(response)).toMatchObject({ error: "invalid_json" });
+  });
+
+  test("webhook validates JSON content types", async () => {
+    const created = await createSource();
+    const body = JSON.stringify({ title: "Accepted", shortDescription: "A", markdownContent: "B" });
+    const accepted = await webhook(created.webhookUrl, {
+      method: "POST",
+      headers: { "content-type": "application/vnd.listen+json" },
+      body,
+    });
+    expect(accepted.status).toBe(201);
+
+    const rejected = await webhook(created.webhookUrl, {
+      method: "POST",
+      headers: { "content-type": "text/plain" },
+      body,
+    });
+    expect(rejected.status).toBe(400);
+    expect(await json(rejected)).toMatchObject({ error: "invalid_request_content_type" });
   });
 
   test("webhook caller rate limit isolates invalid traffic by caller", async () => {

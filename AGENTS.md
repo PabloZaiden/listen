@@ -25,6 +25,11 @@ Public endpoint rate limits must isolate independent callers and tenants; attack
 
 Keep strict types. Prefer shared contracts from `packages/contracts`, shared limits from `packages/shared`, and framework helpers from `@pablozaiden/webapp`. Use bracket notation for environment variables. All source code must be TypeScript; do not add JavaScript source files. Bun serves and executes TypeScript directly, including browser-facing entrypoints such as service workers.
 Do not mutate returned framework configuration or internal objects to simulate constructor options. When a required framework extension point is missing, add it upstream and consume the released API rather than depending on object identity or initialization order. Test-only option types must describe exactly the overrides the helper supports.
+Use the supported Webapp request-body parsers and public-asset APIs instead of
+reconstructing `Request` objects, importing TypeScript as raw text, concatenating
+source, or transpiling browser assets at runtime. If a generally useful
+integration seam is missing, implement it upstream, release it, and consume the
+released package rather than adding a Listen-specific bypass.
 
 ## Naming Conventions
 
@@ -66,6 +71,9 @@ App routes should be declared in `src/server.ts` with `defineRoutes` and delegat
 ## Bun Specifics
 
 Use Bun APIs and scripts. Do not add Node-only tooling. Use `bun:sqlite` for SQLite and `@pablozaiden/webapp` for HTTP/realtime serving.
+Service-worker push, notification, click-navigation, and app-badge behavior
+remain Listen-owned. Define the worker as a typed Webapp public asset and use
+the same asset metadata for development serving and standalone binary builds.
 
 ## Persistence
 

@@ -1,13 +1,10 @@
 import type { Server } from "bun";
-// @ts-expect-error Bun supports importing a TypeScript file as raw text with this import attribute.
-import appBadgeSource from "./web/app-badge.ts" with { type: "text" };
-// @ts-expect-error Bun supports importing a TypeScript file as raw text with this import attribute.
-import serviceWorkerSource from "./web/service-worker.ts" with { type: "text" };
 import listenIcon192Path from "./web/icons/listen-192.png" with { type: "file" };
 import listenIcon512Path from "./web/icons/listen-512.png" with { type: "file" };
 import appleTouchIconPath from "./web/icons/apple-touch-icon.png" with { type: "file" };
-import { createWebAppServer, defineRoutes, errorResponse, getRequestBaseUrl, getRequestOriginInfo, jsonResponse, notFound, parseJson, readRuntimeConfig, sqliteWebAppStore, successResponse, type ResourceRealtimeEvent, type RuntimeConfig, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
+import { createWebAppPublicAsset, createWebAppServer, defineRoutes, errorResponse, getRequestBaseUrl, getRequestOriginInfo, jsonResponse, notFound, parseJson, readRuntimeConfig, sqliteWebAppStore, successResponse, type ResourceRealtimeEvent, type RuntimeConfig, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
 import { browserPushEndpointRequestSchema, browserPushSubscribeRequestSchema, createSourceRequestSchema, listNotificationsQuerySchema, sourceMutationResponseSchema, type WebhookNotificationRequest, webhookNotificationRequestSchema } from "@listen/contracts";
+import { WEBHOOK_JSON_BODY_MAX_BYTES } from "@listen/shared";
 import { createLogger, setLogLevel } from "./core/logger";
 import { verifyWebhookToken } from "./core/webhook-tokens";
 import { createNotificationFromWebhook, deleteNotification, deleteNotifications, listNotifications, markNotificationRead, markNotificationUnread, markNotificationsRead, openNotification } from "./core/notifications";
@@ -16,24 +13,13 @@ import { getBrowserPushConfig, getBrowserPushSubscriptionStatus, subscribeBrowse
 import { initializeDatabase } from "./persistence/database";
 import { LISTEN_VERSION } from "./version";
 import { createWebhookRateLimiter, type WebhookRateLimitDecision, type WebhookRateLimiter } from "./core/webhook-rate-limit";
-import { parseQuery, parseWebhookNotification, RequestBodyLimitError } from "./api/validation";
+import { parseQuery } from "./api/validation";
+import { SERVICE_WORKER_ASSET } from "./web/service-worker-asset";
 
 type ListenRealtimeEvent = ResourceRealtimeEvent;
 
 const log = createLogger("server");
 const webhookLog = createLogger("api:webhooks");
-const SERVICE_WORKER_PATH = "/service-worker";
-const serviceWorkerScript = new Bun.Transpiler({ loader: "ts", target: "browser" }).transformSync(`${appBadgeSource}\n${serviceWorkerSource}`);
-
-function serviceWorkerResponse(): Response {
-  return new Response(serviceWorkerScript, {
-    headers: {
-      "content-type": "text/javascript; charset=utf-8",
-      "service-worker-allowed": "/",
-      "cache-control": "no-cache",
-    },
-  });
-}
 
 function rateLimitedResponse(decision: Extract<WebhookRateLimitDecision, { allowed: false }>): Response {
   return errorResponse(429, "rate_limited", "Too many webhook requests", undefined, {
@@ -224,16 +210,10 @@ function createRoutes(
         webhookLog.debug("Source webhook rate limit exceeded", { sourceId: source.id });
         return rateLimitedResponse(sourceRateLimit);
       }
-      let body: WebhookNotificationRequest;
-      try {
-        body = await parseWebhookNotification(req);
-      } catch (error) {
-        if (error instanceof RequestBodyLimitError) {
-          webhookLog.warn("Webhook request validation failed", { sourceId: source.id, message: error.message });
-          return error.response;
-        }
-        throw error;
-      }
+      const body: WebhookNotificationRequest = await parseJson(req, webhookNotificationRequestSchema, {
+        maxBytes: WEBHOOK_JSON_BODY_MAX_BYTES,
+        requireContentType: true,
+      });
       const notification = createNotificationFromWebhook(body, source, { publicOrigin: getRequestOriginInfo(req, runtimeConfig).origin });
       markSourceUsed(source.id, source.userId);
       ctx.realtime.publishEntityChanged("notifications", notification.id, { target: { userId: source.userId }, payload: notification });
@@ -282,9 +262,7 @@ function createListenWebAppServer(
     logLevel: { onChange: setLogLevel },
     realtime: { path: "/api/ws" },
     routes: createRoutes(runtimeConfig, webhookRateLimiter, webhookCallerKeyResolver),
-    publicRoutes: {
-      [SERVICE_WORKER_PATH]: { GET: serviceWorkerResponse },
-    },
+    publicRoutes: { [SERVICE_WORKER_ASSET.path]: createWebAppPublicAsset(SERVICE_WORKER_ASSET) },
   });
   return server;
 }
