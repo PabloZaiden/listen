@@ -40,7 +40,8 @@ function recordMigration(database: Database, migration: Pick<Migration, "version
 export function runMigrations(database: Database): void {
   ensureMigrationTable(database);
 
-  for (const migration of migrations) {
+  const orderedMigrations = [...migrations].sort((left, right) => left.version - right.version);
+  for (const migration of orderedMigrations) {
     if (hasMigration(database, migration.version)) {
       continue;
     }

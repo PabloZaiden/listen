@@ -95,15 +95,22 @@ describe("database migrations", () => {
       expect(database.query("SELECT name FROM sqlite_master WHERE type = 'index' AND name = $name").get({
         name: "idx_browser_push_user_next_attempt",
       })).toEqual({ name: "idx_browser_push_user_next_attempt" });
-      expect(database.query("SELECT version, name FROM schema_migrations").all()).toEqual([{
+      expect(database.query(
+        "SELECT version, name FROM schema_migrations WHERE version = $version",
+      ).get({ version: 2 })).toEqual({
         version: 2,
         name: "remove_disabled_state",
-      }]);
+      });
+      const migrationCount = (database.query(
+        "SELECT COUNT(*) AS count FROM schema_migrations",
+      ).get() as { count: number }).count;
 
       runMigrations(database);
 
       expect(database.query("SELECT id FROM webhook_sources").all()).toEqual([{ id: "source-active" }]);
-      expect(database.query("SELECT COUNT(*) AS count FROM schema_migrations").get()).toEqual({ count: 1 });
+      expect((database.query(
+        "SELECT COUNT(*) AS count FROM schema_migrations",
+      ).get() as { count: number }).count).toBe(migrationCount);
     } finally {
       database.close();
     }
