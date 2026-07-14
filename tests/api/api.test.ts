@@ -1,7 +1,7 @@
 import "./../setup";
 import { describe, expect, test } from "bun:test";
 import type { RuntimeConfig } from "@pablozaiden/webapp/server";
-import { BROWSER_PUSH_ENDPOINT_MAX_CHARS, WEBHOOK_JSON_BODY_MAX_BYTES } from "@listen/shared";
+import { BROWSER_PUSH_ENDPOINT_MAX_CHARS, LIST_NOTIFICATIONS_DEFAULT_LIMIT, WEBHOOK_JSON_BODY_MAX_BYTES } from "@listen/shared";
 import { createFetchHandler } from "../../src/server";
 import { setBrowserPushSenderForTests } from "../../src/core/browser-push";
 import { createLogger, getLogLevel } from "../../src/core/logger";
@@ -270,6 +270,71 @@ describe("API", () => {
     const list = await json<{ notifications: Array<{ id: string; source: string; markdownContent?: string }> }>(listResponse);
     expect(list.notifications[0]?.source).toBe("Agent");
     expect(list.notifications[0]?.markdownContent).toBeUndefined();
+  });
+
+  test("notification pagination exposes complete global and source-filtered pages", async () => {
+    const first = await createSource();
+    const second = await createSource();
+    for (let index = 0; index < LIST_NOTIFICATIONS_DEFAULT_LIMIT + 1; index += 1) {
+      const response = await webhook(first.webhookUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: `Notification ${index}`,
+          shortDescription: "Page",
+          markdownContent: "Content",
+        }),
+      });
+      expect(response.status).toBe(201);
+    }
+    const secondSourceResponse = await webhook(second.webhookUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        title: "Other source",
+        shortDescription: "Page",
+        markdownContent: "Content",
+      }),
+    });
+    expect(secondSourceResponse.status).toBe(201);
+
+    type NotificationPage = {
+      notifications: Array<{ id: string }>;
+      pagination: { limit: number; offset: number; total: number; nextOffset?: number };
+    };
+    const globalFirst = await json<NotificationPage>(await request("/api/notifications"));
+    expect(globalFirst.notifications).toHaveLength(LIST_NOTIFICATIONS_DEFAULT_LIMIT);
+    expect(globalFirst.pagination.limit).toBe(LIST_NOTIFICATIONS_DEFAULT_LIMIT);
+    expect(globalFirst.pagination.offset).toBe(0);
+    expect(globalFirst.pagination.total).toBeGreaterThanOrEqual(LIST_NOTIFICATIONS_DEFAULT_LIMIT + 2);
+    expect(globalFirst.pagination.nextOffset).toBe(LIST_NOTIFICATIONS_DEFAULT_LIMIT);
+    const globalSecond = await json<NotificationPage>(
+      await request(`/api/notifications?offset=${globalFirst.pagination.nextOffset}`),
+    );
+    expect(globalSecond.notifications).toHaveLength(globalFirst.pagination.total - LIST_NOTIFICATIONS_DEFAULT_LIMIT);
+    expect(globalSecond.pagination.nextOffset).toBeUndefined();
+    expect(new Set([
+      ...globalFirst.notifications.map(({ id }) => id),
+      ...globalSecond.notifications.map(({ id }) => id),
+    ]).size).toBe(globalFirst.pagination.total);
+    expect(globalFirst.notifications.some(({ id }) => globalSecond.notifications.some((notification) => notification.id === id))).toBe(false);
+
+    const filteredFirst = await json<NotificationPage>(
+      await request(`/api/notifications?sourceId=${first.source.id}`),
+    );
+    expect(filteredFirst.notifications).toHaveLength(LIST_NOTIFICATIONS_DEFAULT_LIMIT);
+    expect(filteredFirst.pagination).toEqual({
+      limit: LIST_NOTIFICATIONS_DEFAULT_LIMIT,
+      offset: 0,
+      total: LIST_NOTIFICATIONS_DEFAULT_LIMIT + 1,
+      nextOffset: LIST_NOTIFICATIONS_DEFAULT_LIMIT,
+    });
+    const filteredSecond = await json<NotificationPage>(
+      await request(`/api/notifications?sourceId=${first.source.id}&offset=${filteredFirst.pagination.nextOffset}`),
+    );
+    expect(filteredSecond.notifications).toHaveLength(1);
+    expect(filteredSecond.pagination.nextOffset).toBeUndefined();
+    expect(filteredFirst.notifications.some(({ id }) => filteredSecond.notifications.some((notification) => notification.id === id))).toBe(false);
   });
 
   test("webhook rejects oversized JSON from content length", async () => {

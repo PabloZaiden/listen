@@ -2,15 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { NotificationDetail, NotificationListItem, SourceResponse } from "@listen/contracts";
-import { NOTIFICATION_SOURCE_NAME_MAX_CHARS } from "@listen/shared";
+import { LIST_NOTIFICATIONS_DEFAULT_LIMIT, NOTIFICATION_SOURCE_NAME_MAX_CHARS } from "@listen/shared";
 import {
   Button,
   ActionMenu,
   ConfirmDialog,
   DataList,
   DataListRow,
+  ErrorState,
   EmptyState,
   FormActions,
+  LoadingState,
   Page,
   Panel,
   TextField,
@@ -27,6 +29,15 @@ import "@pablozaiden/webapp/web/styles.css";
 import { LISTEN_VERSION } from "../version";
 import "./app-badge";
 import { BrowserPushSettings } from "./browserPushSettings";
+import {
+  createNotificationCollectionState,
+  mergeNotificationPage,
+  removeNotification,
+  replaceNotification,
+  resetNotificationCollection,
+  type NotificationCollectionState,
+  type NotificationListResponse,
+} from "./notification-pagination";
 import { SWIPE_ACTION_WIDTH, clampSwipeOffset, detectSwipeIntent, shouldCancelSwipeClick, shouldRevealSwipeActions, shouldShowSwipeActionTray, type SwipeIntent } from "./swipe-actions";
 import "./styles.css";
 
@@ -37,17 +48,6 @@ type ConfirmState = {
   danger?: boolean;
   action: () => Promise<void>;
 };
-
-interface ListNotificationsResponse {
-  notifications: NotificationListItem[];
-  unreadCount: number;
-  pagination: {
-    limit: number;
-    offset: number;
-    total: number;
-    nextOffset?: number;
-  };
-}
 
 type BadgeNavigator = Navigator & {
   setAppBadge?: (contents?: number) => Promise<void>;
@@ -285,29 +285,183 @@ function useSources(): [SourceResponse[], () => Promise<void>] {
   return [sources, refresh];
 }
 
-function useNotifications(sourceId?: string): [ListNotificationsResponse | undefined, () => Promise<void>] {
-  const [result, setResult] = useState<ListNotificationsResponse>();
-  const refresh = useCallback(async (signal?: AbortSignal) => {
-    const params = new URLSearchParams({ limit: "50", offset: "0" });
-    if (sourceId) params.set("sourceId", sourceId);
-    const response = await appJson<ListNotificationsResponse>(`/api/notifications?${params}`, { signal });
-    if (signal?.aborted) return;
-    setResult(response);
-    syncAppBadgeFromUnreadCount(response.unreadCount);
-  }, [sourceId]);
-  useEffect(() => {
+type NotificationLoader = {
+  result?: NotificationCollectionState;
+  loading: boolean;
+  loadingMore: boolean;
+  error?: Error;
+  loadMoreError?: Error;
+  refresh: () => Promise<void>;
+  retry: () => Promise<void>;
+  loadNext: () => Promise<void>;
+  updateNotification: (notification: NotificationListItem) => void;
+  removeNotification: (notificationId: string) => void;
+};
+
+function toNotificationLoadError(error: unknown): Error {
+  return error instanceof Error ? error : new Error("Could not load notifications");
+}
+
+function useNotifications(sourceId?: string): NotificationLoader {
+  const [collection, setCollection] = useState<NotificationCollectionState>(() => resetNotificationCollection(sourceId));
+  const collectionRef = useRef(collection);
+  const activeRequestRef = useRef<AbortController | undefined>(undefined);
+  const requestGenerationRef = useRef(0);
+  const loadingMoreRef = useRef(false);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<Error>();
+  const [loadMoreError, setLoadMoreError] = useState<Error>();
+  const [loaded, setLoaded] = useState(false);
+
+  function commitCollection(next: NotificationCollectionState): void {
+    collectionRef.current = next;
+    setCollection(next);
+  }
+
+  function beginRequest(): { controller: AbortController; generation: number } {
+    activeRequestRef.current?.abort();
     const controller = new AbortController();
-    void refresh(controller.signal).catch((error) => {
-      if (!controller.signal.aborted) console.error("Could not load notifications", error);
+    activeRequestRef.current = controller;
+    const generation = requestGenerationRef.current + 1;
+    requestGenerationRef.current = generation;
+    return { controller, generation };
+  }
+
+  function ownsRequest(controller: AbortController, generation: number): boolean {
+    return activeRequestRef.current === controller && requestGenerationRef.current === generation;
+  }
+
+  function isCurrentRequest(controller: AbortController, generation: number): boolean {
+    return ownsRequest(controller, generation) && !controller.signal.aborted;
+  }
+
+  const requestPage = useCallback(async (offset: number, signal: AbortSignal): Promise<NotificationListResponse> => {
+    const params = new URLSearchParams({
+      limit: String(LIST_NOTIFICATIONS_DEFAULT_LIMIT),
+      offset: String(offset),
     });
-    return () => controller.abort();
-  }, [refresh]);
-  return [result, refresh];
+    if (sourceId) params.set("sourceId", sourceId);
+    return appJson<NotificationListResponse>(`/api/notifications?${params}`, { signal });
+  }, [sourceId]);
+
+  const refreshInternal = useCallback(async (reset: boolean): Promise<void> => {
+    if (reset) {
+      commitCollection(resetNotificationCollection(sourceId));
+      setLoading(true);
+      setError(undefined);
+      setLoadMoreError(undefined);
+      setLoaded(false);
+    }
+    loadingMoreRef.current = false;
+    setLoadingMore(false);
+    const { controller, generation } = beginRequest();
+    try {
+      const response = await requestPage(0, controller.signal);
+      if (!isCurrentRequest(controller, generation)) return;
+      const next = reset
+        ? createNotificationCollectionState(response, sourceId)
+        : mergeNotificationPage(collectionRef.current, response);
+      commitCollection(next);
+      setLoaded(true);
+      syncAppBadgeFromUnreadCount(response.unreadCount);
+      setError(undefined);
+      setLoadMoreError(undefined);
+    } catch (requestError) {
+      if (!isCurrentRequest(controller, generation)) return;
+      setError(toNotificationLoadError(requestError));
+    } finally {
+      if (!ownsRequest(controller, generation)) return;
+      activeRequestRef.current = undefined;
+      setLoading(false);
+    }
+  }, [requestPage, sourceId]);
+
+  const refresh = useCallback(async (): Promise<void> => {
+    await refreshInternal(false);
+  }, [refreshInternal]);
+
+  const retry = useCallback(async (): Promise<void> => {
+    const current = collectionRef.current;
+    await refreshInternal(current.total === 0 && current.notifications.length === 0);
+  }, [refreshInternal]);
+
+  const loadNext = useCallback(async (): Promise<void> => {
+    if (loadingMoreRef.current) return;
+    const offset = collectionRef.current.nextOffset;
+    if (offset === undefined) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    setLoadMoreError(undefined);
+    const { controller, generation } = beginRequest();
+    try {
+      const response = await requestPage(offset, controller.signal);
+      if (!isCurrentRequest(controller, generation)) return;
+      commitCollection(mergeNotificationPage(collectionRef.current, response));
+      syncAppBadgeFromUnreadCount(response.unreadCount);
+      setError(undefined);
+    } catch (requestError) {
+      if (!isCurrentRequest(controller, generation)) return;
+      setLoadMoreError(toNotificationLoadError(requestError));
+    } finally {
+      if (!ownsRequest(controller, generation)) return;
+      activeRequestRef.current = undefined;
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+    }
+  }, [requestPage]);
+
+  const updateNotification = useCallback((notification: NotificationListItem): void => {
+    commitCollection(replaceNotification(collectionRef.current, notification));
+  }, []);
+
+  const removeLoadedNotification = useCallback((notificationId: string): void => {
+    commitCollection(removeNotification(collectionRef.current, notificationId));
+  }, []);
+
+  useEffect(() => {
+    const reset = resetNotificationCollection(sourceId);
+    commitCollection(reset);
+    setLoading(true);
+    setError(undefined);
+    setLoadMoreError(undefined);
+    setLoaded(false);
+    void refreshInternal(true);
+    return () => {
+      activeRequestRef.current?.abort();
+      activeRequestRef.current = undefined;
+      requestGenerationRef.current += 1;
+    };
+  }, [refreshInternal, sourceId]);
+
+  return {
+    result: loaded && collection.sourceId === sourceId ? collection : undefined,
+    loading: loading || collection.sourceId !== sourceId,
+    loadingMore,
+    error,
+    loadMoreError,
+    refresh,
+    retry,
+    loadNext,
+    updateNotification,
+    removeNotification: removeLoadedNotification,
+  };
 }
 
 function InboxView({ route, refreshSources, requestConfirm }: { route: WebAppRoute; refreshSources: () => Promise<void>; requestConfirm: (confirm: ConfirmState) => void }) {
   const sourceId = typeof route.sourceId === "string" ? route.sourceId : undefined;
-  const [result, refreshNotifications] = useNotifications(sourceId);
+  const {
+    result,
+    loading,
+    loadingMore,
+    error,
+    loadMoreError,
+    refresh: refreshNotifications,
+    retry,
+    loadNext,
+    updateNotification,
+    removeNotification,
+  } = useNotifications(sourceId);
   const [openRowId, setOpenRowId] = useState<string>();
   useRealtimeRefresh({
     resources: ["notifications", "sources"],
@@ -328,7 +482,8 @@ function InboxView({ route, refreshSources, requestConfirm }: { route: WebAppRou
 
   async function markNotificationOpened(notification: NotificationListItem): Promise<void> {
     const action = notification.openedAt ? "unread" : "read";
-    await appJson(`/api/notifications/${encodeURIComponent(notification.id)}/${action}`, { method: "POST" });
+    const response = await appJson<{ notification: NotificationListItem }>(`/api/notifications/${encodeURIComponent(notification.id)}/${action}`, { method: "POST" });
+    updateNotification(response.notification);
     setOpenRowId(undefined);
     await refreshNotifications();
   }
@@ -341,6 +496,7 @@ function InboxView({ route, refreshSources, requestConfirm }: { route: WebAppRou
       danger: true,
       action: async () => {
         await appJson(`/api/notifications/${encodeURIComponent(notification.id)}`, { method: "DELETE" });
+        removeNotification(notification.id);
         setOpenRowId(undefined);
         await refreshNotifications();
       },
@@ -352,6 +508,25 @@ function InboxView({ route, refreshSources, requestConfirm }: { route: WebAppRou
       if (!(event.target instanceof Element)) return;
       if (!event.target.closest(".listen-swipe-row")) setOpenRowId(undefined);
     }}>
+      {!result && loading ? (
+        <Panel><LoadingState title="Loading notifications" /></Panel>
+      ) : null}
+      {!result && error ? (
+        <Panel>
+          <ErrorState
+            title="Could not load notifications"
+            description={error.message}
+            action={<Button type="button" loading={loading} onClick={() => void retry()}>Retry</Button>}
+          />
+        </Panel>
+      ) : null}
+      {result && error ? (
+        <ErrorState
+          title="Could not refresh notifications"
+          description={error.message}
+          action={<Button type="button" onClick={() => void retry()}>Retry</Button>}
+        />
+      ) : null}
       {notifications.length > 0 ? (
         <Panel>
           <DataList>
@@ -368,6 +543,28 @@ function InboxView({ route, refreshSources, requestConfirm }: { route: WebAppRou
               />
             ))}
           </DataList>
+        </Panel>
+      ) : null}
+      {result && result.total === 0 && !loading && !error ? (
+        <Panel><EmptyState title="No notifications" description="New notifications will appear here." /></Panel>
+      ) : null}
+      {result && result.nextOffset !== undefined ? (
+        <Panel className="listen-pagination">
+          <div className="listen-pagination-controls">
+            <span className="listen-pagination-summary" role="status">
+              Showing {Math.min(notifications.length, result.total)} of {result.total} notifications
+            </span>
+            <Button type="button" loading={loadingMore} onClick={() => void loadNext()}>
+              {loadingMore ? "Loading..." : "Load more"}
+            </Button>
+          </div>
+          {loadMoreError ? (
+            <ErrorState
+              title="Could not load more notifications"
+              description={loadMoreError.message}
+              action={<Button type="button" onClick={() => void loadNext()}>Retry</Button>}
+            />
+          ) : null}
         </Panel>
       ) : null}
     </Page>

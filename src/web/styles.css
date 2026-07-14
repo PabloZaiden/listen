@@ -168,6 +168,24 @@ a,
   white-space: nowrap;
 }
 
+.listen-pagination {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.listen-pagination-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.listen-pagination-summary {
+  color: var(--wapp-muted);
+  font-size: 0.875rem;
+}
+
 .listen-swipe-row {
   position: relative;
   overflow: hidden;
@@ -350,6 +368,15 @@ a,
     flex-direction: column;
     gap: 0.05rem;
     line-height: 1.25;
+  }
+
+  .listen-pagination-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .listen-pagination-controls .wapp-button {
+    align-self: flex-start;
   }
 }
 
