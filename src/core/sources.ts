@@ -1,4 +1,4 @@
-import type { SourceResponse } from "@listen/contracts";
+import type { SourceMutationResponse, SourceResponse } from "@listen/contracts";
 import { requireUserId } from "@listen/shared";
 import {
   deleteSource,
@@ -16,12 +16,6 @@ import { generateWebhookToken, hashWebhookToken } from "./webhook-tokens";
 import { createLogger } from "./logger";
 
 const log = createLogger("sources");
-
-export interface CreatedSource {
-  source: SourceResponse;
-  webhookUrl: string;
-  token: string;
-}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -42,7 +36,7 @@ export function buildWebhookUrl(publicBaseUrl: string, sourceId: string, token: 
   return `${publicBaseUrl}/api/webhooks/${sourceId}/${token}`;
 }
 
-export async function createSource(name: string, publicBaseUrl: string, userId: string): Promise<CreatedSource> {
+export async function createSource(name: string, publicBaseUrl: string, userId: string): Promise<SourceMutationResponse> {
   const ownerId = requireUserId(userId);
   const token = generateWebhookToken();
   const source: PersistedSource = {
@@ -59,7 +53,6 @@ export async function createSource(name: string, publicBaseUrl: string, userId: 
   log.info("Source created", { sourceId: source.id, userId: ownerId, name: source.name });
   return {
     source: response,
-    token,
     webhookUrl: buildWebhookUrl(publicBaseUrl, source.id, token),
   };
 }
@@ -72,7 +65,7 @@ export function getSourceForWebhook(id: string): PersistedSource | undefined {
   return getSourceByIdForWebhook(id);
 }
 
-export async function rotateSourceToken(id: string, publicBaseUrl: string, userId: string): Promise<CreatedSource | undefined> {
+export async function rotateSourceToken(id: string, publicBaseUrl: string, userId: string): Promise<SourceMutationResponse | undefined> {
   const ownerId = requireUserId(userId);
   const existing = getSourceById(id, ownerId);
   if (!existing) {
@@ -90,7 +83,6 @@ export async function rotateSourceToken(id: string, publicBaseUrl: string, userI
   log.info("Source token rotated", { sourceId: id });
   return {
     source: response,
-    token,
     webhookUrl: buildWebhookUrl(publicBaseUrl, id, token),
   };
 }

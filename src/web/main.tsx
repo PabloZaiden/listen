@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { NotificationDetail, NotificationListItem, SourceResponse } from "@listen/contracts";
+import type { NotificationDetail, NotificationListItem, SourceMutationResponse, SourceResponse } from "@listen/contracts";
 import { LIST_NOTIFICATIONS_DEFAULT_LIMIT, NOTIFICATION_SOURCE_NAME_MAX_CHARS } from "@listen/shared";
 import {
   Button,
@@ -667,7 +667,7 @@ function SourcesView({ sources, refreshSources, requestConfirm }: { sources: Sou
     setBusy(true);
     setError(undefined);
     try {
-      const response = await appJson<{ source: SourceResponse; webhookUrl: string }>("/api/sources", { method: "POST", body: JSON.stringify({ name: trimmed }) });
+      const response = await appJson<SourceMutationResponse>("/api/sources", { method: "POST", body: JSON.stringify({ name: trimmed }) });
       setWebhookUrl(response.webhookUrl);
       setName("");
       await refreshSources();
@@ -685,7 +685,7 @@ function SourcesView({ sources, refreshSources, requestConfirm }: { sources: Sou
       confirmLabel: "Rotate token",
       danger: true,
       action: async () => {
-        const response = await appJson<{ webhookUrl: string }>(`/api/sources/${encodeURIComponent(source.id)}/token/rotate`, { method: "POST" });
+        const response = await appJson<SourceMutationResponse>(`/api/sources/${encodeURIComponent(source.id)}/token/rotate`, { method: "POST" });
         setWebhookUrl(response.webhookUrl);
         await refreshSources();
       },

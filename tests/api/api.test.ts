@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import type { RuntimeConfig } from "@pablozaiden/webapp/server";
 import { sqliteWebAppStore, type UserRecord } from "@pablozaiden/webapp/server";
+import { sourceMutationResponseSchema, sourceResponseSchema, type SourceMutationResponse } from "@listen/contracts";
 import { BROWSER_PUSH_ENDPOINT_MAX_CHARS, LIST_NOTIFICATIONS_DEFAULT_LIMIT, LIST_NOTIFICATIONS_MAX_LIMIT, WEBHOOK_JSON_BODY_MAX_BYTES } from "@listen/shared";
 import { createFetchHandler, getWebhookCallerKey } from "../../src/server";
 import { setBrowserPushSenderForTests } from "../../src/core/browser-push";
@@ -114,6 +115,10 @@ async function json<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function parseSourceMutationResponse(response: Response): Promise<SourceMutationResponse> {
+  return sourceMutationResponseSchema.parse(await json<unknown>(response));
+}
+
 function expectSecurityHeaders(response: Response): void {
   expect(response.headers.get("referrer-policy")).toBe("strict-origin-when-cross-origin");
   expect(response.headers.get("x-frame-options")).toBe("DENY");
@@ -129,14 +134,14 @@ async function expectRateLimited(response: Response): Promise<void> {
   });
 }
 
-async function createSource(): Promise<{ source: { id: string; name: string }; webhookUrl: string }> {
+async function createSource(): Promise<SourceMutationResponse> {
   const response = await request("/api/sources", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ name: "Agent" }),
   });
   expect(response.status).toBe(201);
-  return json(response);
+  return parseSourceMutationResponse(response);
 }
 
 async function webhook(webhookUrl: string, init: RequestInit): Promise<Response> {
@@ -302,8 +307,8 @@ describe("API", () => {
     const secondResponse = await secondHandler(sourceRequest("Second"));
     expect(firstResponse?.status).toBe(201);
     expect(secondResponse?.status).toBe(201);
-    expect((await json<{ webhookUrl: string }>(firstResponse!)).webhookUrl).toContain("https://first.example/api/webhooks/");
-    expect((await json<{ webhookUrl: string }>(secondResponse!)).webhookUrl).toContain("https://second.example/api/webhooks/");
+    expect((await parseSourceMutationResponse(firstResponse!)).webhookUrl).toContain("https://first.example/api/webhooks/");
+    expect((await parseSourceMutationResponse(secondResponse!)).webhookUrl).toContain("https://second.example/api/webhooks/");
   });
 
   test("fetch handler includes the trusted proxy prefix in webhook URLs", async () => {
@@ -321,7 +326,7 @@ describe("API", () => {
     }));
 
     expect(response?.status).toBe(201);
-    expect((await json<{ webhookUrl: string }>(response!)).webhookUrl).toMatch(/^https:\/\/public\.example\/listen\/api\/webhooks\//);
+    expect((await parseSourceMutationResponse(response!)).webhookUrl).toMatch(/^https:\/\/public\.example\/listen\/api\/webhooks\//);
   });
 
   test("webhook caller key uses the Bun peer address instead of forwarded headers", () => {
@@ -340,10 +345,33 @@ describe("API", () => {
     const created = await createSource();
     expect(created.webhookUrl).toContain(`/api/webhooks/${created.source.id}/`);
     const listResponse = await request("/api/sources");
-    const list = await json<{ sources: Array<{ id: string; name: string; webhookUrl?: string }> }>(listResponse);
-    const listed = list.sources.find((source) => source.id === created.source.id);
-    expect(listed).toMatchObject(created.source);
-    expect(listed?.webhookUrl).toBeUndefined();
+    const list = await json<{ sources: unknown[] }>(listResponse);
+    const listed = list.sources.find((source) => {
+      if (typeof source !== "object" || source === null || !("id" in source)) return false;
+      return source.id === created.source.id;
+    });
+    expect(sourceResponseSchema.parse(listed)).toEqual(created.source);
+  });
+
+  test("source token rotation returns a safe response and invalidates the previous URL", async () => {
+    const created = await createSource();
+    const rotateResponse = await request(`/api/sources/${created.source.id}/token/rotate`, { method: "POST" });
+    expect(rotateResponse.status).toBe(200);
+    const rotated = await parseSourceMutationResponse(rotateResponse);
+    expect(rotated.source).toMatchObject({
+      id: created.source.id,
+      name: created.source.name,
+      createdAt: created.source.createdAt,
+    });
+    expect(rotated.webhookUrl).not.toBe(created.webhookUrl);
+
+    const init = () => ({
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "Rotated", shortDescription: "A", markdownContent: "A" }),
+    });
+    expect((await webhook(created.webhookUrl, init())).status).toBe(401);
+    expect((await webhook(rotated.webhookUrl, init())).status).toBe(201);
   });
 
   test("webhook accepts valid token, derives source, and list omits markdown", async () => {
@@ -625,7 +653,7 @@ describe("API", () => {
       body: JSON.stringify({ name: "Second" }),
     });
     expect(secondResponse.status).toBe(201);
-    const second = await json<{ webhookUrl: string }>(secondResponse);
+    const second = await parseSourceMutationResponse(secondResponse);
     const init = () => ({
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -661,7 +689,7 @@ describe("API", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: "Other" }),
     });
-    const second = await json<{ source: { id: string }; webhookUrl: string }>(secondResponse);
+    const second = await parseSourceMutationResponse(secondResponse);
     for (const url of [first.webhookUrl, second.webhookUrl]) {
       const webhookResponse = await webhook(url, {
         method: "POST",
@@ -749,7 +777,7 @@ describe("API", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: "Other" }),
     });
-    const second = await json<{ source: { id: string }; webhookUrl: string }>(secondResponse);
+    const second = await parseSourceMutationResponse(secondResponse);
 
     for (const url of [first.webhookUrl, second.webhookUrl]) {
       await webhook(url, {
@@ -775,7 +803,7 @@ describe("API", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: "Other" }),
     });
-    const second = await json<{ source: { id: string }; webhookUrl: string }>(secondResponse);
+    const second = await parseSourceMutationResponse(secondResponse);
 
     const firstWebhook = await webhook(first.webhookUrl, {
       method: "POST",
@@ -812,7 +840,7 @@ describe("API", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: "Other" }),
     });
-    const second = await json<{ source: { id: string }; webhookUrl: string }>(secondResponse);
+    const second = await parseSourceMutationResponse(secondResponse);
     for (const url of [first.webhookUrl, second.webhookUrl]) {
       await webhook(url, {
         method: "POST",
@@ -1049,14 +1077,14 @@ describe("API", () => {
     });
     expect(await json<{ subscribed: boolean }>(lookupFromB)).toEqual({ subscribed: true });
 
-    const createOwnedSource = async (user: AuthenticatedTestUser, name: string): Promise<{ webhookUrl: string }> => {
+    const createOwnedSource = async (user: AuthenticatedTestUser, name: string): Promise<SourceMutationResponse> => {
       const response = await requestAs(user, "/api/sources", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name }),
       });
       expect(response.status).toBe(201);
-      return json(response);
+      return parseSourceMutationResponse(response);
     };
     const sourceA = await createOwnedSource(userA, "Push claim A");
     const sourceB = await createOwnedSource(userB, "Push claim B");
@@ -1082,14 +1110,14 @@ describe("API", () => {
   test("authenticated users cannot access each other's sources, notifications, or push subscriptions", async () => {
     const userA = createAuthenticatedTestUser("ownership-a");
     const userB = createAuthenticatedTestUser("ownership-b");
-    const createOwnedSource = async (user: AuthenticatedTestUser, name: string): Promise<{ source: { id: string; name: string }; webhookUrl: string }> => {
+    const createOwnedSource = async (user: AuthenticatedTestUser, name: string): Promise<SourceMutationResponse> => {
       const response = await requestAs(user, "/api/sources", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name }),
       });
       expect(response.status).toBe(201);
-      return json(response);
+      return parseSourceMutationResponse(response);
     };
     const sourceA = await createOwnedSource(userA, "User A source");
     const sourceB = await createOwnedSource(userB, "User B source");
