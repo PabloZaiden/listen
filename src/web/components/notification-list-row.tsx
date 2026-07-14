@@ -50,7 +50,7 @@ export function NotificationListRow({
   const swipeStart = useRef<SwipeStart | undefined>(undefined);
   const suppressClick = useRef(false);
   const [dragOffset, setDragOffset] = useState<number>();
-  const isUnread = !notification.openedAt;
+  const isUnread = !notification.readAt;
   const markLabel = isUnread ? "Mark as read" : "Mark as unread";
   const currentOffset = dragOffset ?? 0;
   const isRevealingActions = shouldShowSwipeActionTray(isOpen, currentOffset);
@@ -193,8 +193,8 @@ export function NotificationListRow({
       >
         <DataListRow
           title={(
-            <span className={`listen-notification-title ${notification.openedAt ? "" : "unread"}`}>
-              {notification.openedAt ? null : <span className="listen-unread-dot" aria-hidden="true" />}
+            <span className={`listen-notification-title ${notification.readAt ? "" : "unread"}`}>
+              {notification.readAt ? null : <span className="listen-unread-dot" aria-hidden="true" />}
               <span>{notification.title}</span>
             </span>
           )}

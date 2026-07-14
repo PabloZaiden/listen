@@ -41,7 +41,7 @@ export function useNotificationActions(): NotificationActions {
   }, []);
 
   const markReadState = useCallback(async (notification: NotificationListItem): Promise<NotificationListItem> => {
-    const action = notification.openedAt ? "unread" : "read";
+    const action = notification.readAt ? "unread" : "read";
     const response = await appJson<{ notification: NotificationListItem }>(`/api/notifications/${encodeURIComponent(notification.id)}/${action}`, { method: "POST" });
     return response.notification;
   }, []);

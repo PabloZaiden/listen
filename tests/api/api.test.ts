@@ -312,7 +312,8 @@ describe("API", () => {
       "offset=-1",
       "offset=1.5",
       "offset=not-a-number",
-      "opened=maybe",
+      "read=maybe",
+      "unexpected=value",
     ];
     for (const query of invalidQueries) {
       const response = await request(`/api/notifications?${query}`);
@@ -336,25 +337,25 @@ describe("API", () => {
     const firstNotification = await json<{ id: string }>(firstWebhook);
     await request(`/api/notifications/${firstNotification.id}`);
 
-    const opened = await json<{ notifications: unknown[]; pagination: { limit: number; offset: number; total: number } }>(
-      await request(`/api/notifications?sourceId=${created.source.id}&limit=1&offset=0&opened=true`),
+    const read = await json<{ notifications: unknown[]; pagination: { limit: number; offset: number; total: number } }>(
+      await request(`/api/notifications?sourceId=${created.source.id}&limit=1&offset=0&read=true`),
     );
-    expect(opened.notifications).toHaveLength(1);
-    expect(opened.pagination).toEqual({ limit: 1, offset: 0, total: 1 });
+    expect(read.notifications).toHaveLength(1);
+    expect(read.pagination).toEqual({ limit: 1, offset: 0, total: 1 });
 
     const unread = await json<{ notifications: unknown[] }>(
-      await request(`/api/notifications?sourceId=${created.source.id}&opened=false`),
+      await request(`/api/notifications?sourceId=${created.source.id}&read=false`),
     );
     expect(unread.notifications).toHaveLength(1);
 
-    for (const query of ["opened=maybe", `limit=${LIST_NOTIFICATIONS_MAX_LIMIT + 1}`, "offset=-1"]) {
+    for (const query of ["read=maybe", "unexpected=value", `limit=${LIST_NOTIFICATIONS_MAX_LIMIT + 1}`, "offset=-1"]) {
       const response = await request(`/api/notifications?${query}`, { method: "DELETE" });
       expect(response.status).toBe(400);
       expect(await json<{ error: string }>(response)).toMatchObject({ error: "invalid_request_query" });
     }
 
     const deleted = await json<{ deletedCount: number }>(
-      await request(`/api/notifications?sourceId=${created.source.id}&opened=true`, { method: "DELETE" }),
+      await request(`/api/notifications?sourceId=${created.source.id}&read=true`, { method: "DELETE" }),
     );
     expect(deleted.deletedCount).toBe(1);
     const remaining = await json<{ notifications: unknown[] }>(
@@ -663,8 +664,8 @@ describe("API", () => {
     const notification = await json<{ id: string }>(webhookResponse);
     const beforeDetail = await json<{ unreadCount: number }>(await request("/api/notifications"));
     const detailResponse = await request(`/api/notifications/${notification.id}`);
-    const detail = await json<{ notification: { openedAt: string; markdownContent: string } }>(detailResponse);
-    expect(detail.notification.openedAt).toBeTruthy();
+    const detail = await json<{ notification: { readAt: string; markdownContent: string } }>(detailResponse);
+    expect(detail.notification.readAt).toBeTruthy();
     expect(detail.notification.markdownContent).toBe("C");
     const afterFirstDetail = await json<{ unreadCount: number }>(await request("/api/notifications"));
     expect(afterFirstDetail.unreadCount).toBe(beforeDetail.unreadCount - 1);
@@ -694,25 +695,25 @@ describe("API", () => {
 
     const readResponse = await request(`/api/notifications/${notification.id}/read`, { method: "POST" });
     expect(readResponse.status).toBe(200);
-    expect((await json<{ notification: { openedAt?: string } }>(readResponse)).notification.openedAt).toBeTruthy();
+    expect((await json<{ notification: { readAt?: string } }>(readResponse)).notification.readAt).toBeTruthy();
     const afterRead = await json<{ unreadCount: number }>(await request("/api/notifications"));
     expect(afterRead.unreadCount).toBe(initialUnreadCount);
 
     const repeatedReadResponse = await request(`/api/notifications/${notification.id}/read`, { method: "POST" });
     expect(repeatedReadResponse.status).toBe(200);
-    expect((await json<{ notification: { openedAt?: string } }>(repeatedReadResponse)).notification.openedAt).toBeTruthy();
+    expect((await json<{ notification: { readAt?: string } }>(repeatedReadResponse)).notification.readAt).toBeTruthy();
     const afterRepeatedRead = await json<{ unreadCount: number }>(await request("/api/notifications"));
     expect(afterRepeatedRead.unreadCount).toBe(initialUnreadCount);
 
     const unreadResponse = await request(`/api/notifications/${notification.id}/unread`, { method: "POST" });
     expect(unreadResponse.status).toBe(200);
-    expect((await json<{ notification: { openedAt?: string } }>(unreadResponse)).notification.openedAt).toBeUndefined();
+    expect((await json<{ notification: { readAt?: string } }>(unreadResponse)).notification.readAt).toBeUndefined();
     const afterUnread = await json<{ unreadCount: number }>(await request("/api/notifications"));
     expect(afterUnread.unreadCount).toBe(initialUnreadCount + 1);
 
     const repeatedUnreadResponse = await request(`/api/notifications/${notification.id}/unread`, { method: "POST" });
     expect(repeatedUnreadResponse.status).toBe(200);
-    expect((await json<{ notification: { openedAt?: string } }>(repeatedUnreadResponse)).notification.openedAt).toBeUndefined();
+    expect((await json<{ notification: { readAt?: string } }>(repeatedUnreadResponse)).notification.readAt).toBeUndefined();
     const afterRepeatedUnread = await json<{ unreadCount: number }>(await request("/api/notifications"));
     expect(afterRepeatedUnread.unreadCount).toBe(initialUnreadCount + 1);
   });
@@ -736,9 +737,9 @@ describe("API", () => {
 
     const bulkRead = await request(`/api/notifications/read?sourceId=${first.source.id}`, { method: "POST" });
     expect(await json(bulkRead)).toMatchObject({ updatedCount: 1 });
-    const firstUnread = await json<{ notifications: unknown[] }>(await request(`/api/notifications?sourceId=${first.source.id}&opened=false`));
+    const firstUnread = await json<{ notifications: unknown[] }>(await request(`/api/notifications?sourceId=${first.source.id}&read=false`));
     expect(firstUnread.notifications).toHaveLength(0);
-    const secondUnread = await json<{ notifications: unknown[] }>(await request(`/api/notifications?sourceId=${second.source.id}&opened=false`));
+    const secondUnread = await json<{ notifications: unknown[] }>(await request(`/api/notifications?sourceId=${second.source.id}&read=false`));
     expect(secondUnread.notifications).toHaveLength(1);
   });
 

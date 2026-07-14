@@ -13,20 +13,20 @@ export const notificationListItemSchema = z.object({
   sourceId: z.string().optional(),
   icon: z.string().optional(),
   createdAt: z.string(),
-  openedAt: z.string().optional(),
+  readAt: z.string().optional(),
 });
 
 export const notificationDetailSchema = notificationListItemSchema.extend({
   markdownContent: z.string(),
-  openedAt: z.string(),
+  readAt: z.string(),
 });
 
 export const listNotificationsQuerySchema = z.object({
   sourceId: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(LIST_NOTIFICATIONS_MAX_LIMIT).default(LIST_NOTIFICATIONS_DEFAULT_LIMIT),
   offset: z.coerce.number().int().min(0).default(0),
-  opened: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
-});
+  read: z.enum(["true", "false"]).transform((value) => value === "true").optional(),
+}).strict();
 
 export const markdownContentSchema = z.string().min(1).refine(
   (value) => new TextEncoder().encode(value).byteLength <= NOTIFICATION_MARKDOWN_MAX_BYTES,
