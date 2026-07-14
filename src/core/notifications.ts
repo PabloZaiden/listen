@@ -116,25 +116,12 @@ export function listNotifications(options: ListNotificationsOptions): ListNotifi
  */
 export function openNotification(id: string, userId: string): NotificationDetail | undefined {
   const ownerId = requireUserId(userId);
-  const existing = getNotificationById(id, ownerId);
-  if (!existing) {
+  const read = markPersistedNotificationRead(id, nowIso(), ownerId);
+  if (!read) {
     log.warn("Notification open requested but notification was not found", { notificationId: id });
     return undefined;
   }
-  if (existing.openedAt) {
-    return toNotificationDetail(existing);
-  }
-  const read = markNotificationRead(id, ownerId);
-  if (!read) {
-    log.warn("Notification detail read update failed after lookup", { notificationId: id });
-    return undefined;
-  }
-  const updated = getNotificationById(id, ownerId);
-  if (!updated) {
-    log.warn("Notification detail fetch failed after read update", { notificationId: id });
-    return undefined;
-  }
-  return toNotificationDetail(updated);
+  return toNotificationDetail(read);
 }
 
 export function deleteNotification(id: string, userId: string): boolean {
@@ -152,8 +139,8 @@ export function deleteNotification(id: string, userId: string): boolean {
 }
 
 export function deleteNotifications(options: { userId: string; sourceId?: string; opened?: boolean }): number {
-  requireUserId(options.userId);
-  const deletedCount = deletePersistedNotifications(options);
+  const ownerId = requireUserId(options.userId);
+  const deletedCount = deletePersistedNotifications({ ...options, userId: ownerId });
   log.info("Notifications deleted", { sourceId: options.sourceId, opened: options.opened, deletedCount });
   return deletedCount;
 }
