@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import type { BrowserPushConfigResponse, BrowserPushStatusResponse, BrowserPushSubscription, BrowserPushSubscriptionResponse } from "@listen/contracts";
-import { appJson, Button, FormGroup, FormSection } from "@pablozaiden/webapp/web";
+import { appJson, Button, FormGroup, FormSection, useToast } from "@pablozaiden/webapp/web";
+import { mutationErrorMessage, useMutationTracker } from "./mutation-state";
 
 type BrowserPushUiState = "loading" | "unsupported" | "denied" | "unsubscribed" | "subscribed" | "error";
 
@@ -105,6 +106,7 @@ async function ensureCurrentBrowserPushSubscription(
 
 function useBrowserPushSettings(): [BrowserPushState, { subscribe: () => Promise<boolean>; unsubscribe: () => Promise<boolean>; refresh: () => Promise<void> }] {
   const [state, setState] = useState<BrowserPushState>({ status: "loading", busy: false });
+  const { start, finish } = useMutationTracker();
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
     if (!browserSupportsPush()) {
@@ -151,7 +153,24 @@ function useBrowserPushSettings(): [BrowserPushState, { subscribe: () => Promise
     return () => controller.abort();
   }, [refresh]);
 
+  const refreshNow = useCallback(async () => {
+    const mutationKey = "browser-push";
+    if (!start(mutationKey)) return;
+    setState((current) => ({ ...current, status: "loading", busy: true, message: undefined }));
+    try {
+      await refresh();
+    } catch (error) {
+      const message = mutationErrorMessage(error, "Could not refresh browser notification status.");
+      setState({ status: "error", busy: false, message });
+      throw error;
+    } finally {
+      finish(mutationKey);
+    }
+  }, [finish, refresh, start]);
+
   const subscribe = useCallback(async () => {
+    const mutationKey = "browser-push";
+    if (!start(mutationKey)) return false;
     setState((current) => ({ ...current, busy: true, message: undefined }));
     try {
       if (!browserSupportsPush()) {
@@ -176,12 +195,17 @@ function useBrowserPushSettings(): [BrowserPushState, { subscribe: () => Promise
       setState({ status: "subscribed", busy: false });
       return true;
     } catch (error) {
-      setState({ status: "error", busy: false, message: error instanceof Error ? error.message : String(error) });
-      return false;
+      const message = mutationErrorMessage(error, "Could not enable browser notifications.");
+      setState({ status: "error", busy: false, message });
+      throw error;
+    } finally {
+      finish(mutationKey);
     }
-  }, []);
+  }, [finish, start]);
 
   const unsubscribe = useCallback(async () => {
+    const mutationKey = "browser-push";
+    if (!start(mutationKey)) return false;
     setState((current) => ({ ...current, busy: true, message: undefined }));
     try {
       if (!browserSupportsPush()) {
@@ -203,12 +227,15 @@ function useBrowserPushSettings(): [BrowserPushState, { subscribe: () => Promise
       setState({ status: "unsubscribed", busy: false });
       return true;
     } catch (error) {
-      setState({ status: "error", busy: false, message: error instanceof Error ? error.message : String(error) });
-      return false;
+      const message = mutationErrorMessage(error, "Could not disable browser notifications.");
+      setState({ status: "error", busy: false, message });
+      throw error;
+    } finally {
+      finish(mutationKey);
     }
-  }, []);
+  }, [finish, start]);
 
-  return [state, { subscribe, unsubscribe, refresh: () => refresh() }];
+  return [state, { subscribe, unsubscribe, refresh: refreshNow }];
 }
 
 function browserPushDescription(state: BrowserPushState): string {
@@ -229,33 +256,50 @@ function browserPushDescription(state: BrowserPushState): string {
 }
 
 export function BrowserPushSettings({ onEnabled, onDisabled }: { onEnabled?: () => void; onDisabled?: () => void }): React.ReactElement {
+  const toast = useToast();
   const [state, actions] = useBrowserPushSettings();
 
   async function subscribe(): Promise<void> {
-    if (await actions.subscribe()) {
-      onEnabled?.();
+    try {
+      if (await actions.subscribe()) {
+        onEnabled?.();
+        toast.success("Browser notifications enabled.");
+      }
+    } catch (error) {
+      toast.error(mutationErrorMessage(error, "Could not enable browser notifications."));
     }
   }
 
   async function unsubscribe(): Promise<void> {
-    if (await actions.unsubscribe()) {
-      onDisabled?.();
+    try {
+      if (await actions.unsubscribe()) {
+        onDisabled?.();
+        toast.success("Browser notifications disabled.");
+      }
+    } catch (error) {
+      toast.error(mutationErrorMessage(error, "Could not disable browser notifications."));
     }
   }
 
+  function retry(): void {
+    void actions.refresh().catch((error: unknown) => {
+      toast.error(mutationErrorMessage(error, "Could not refresh browser notification status."));
+    });
+  }
+
   const primaryAction = state.status === "subscribed" ? (
-    <Button type="button" onClick={() => void unsubscribe()} disabled={state.busy}>
+    <Button type="button" onClick={() => { void unsubscribe(); }} loading={state.busy}>
       {state.busy ? "Disabling..." : "Disable on this browser"}
     </Button>
   ) : (
-    <Button type="button" variant="primary" onClick={() => void subscribe()} disabled={state.busy || state.status === "loading" || state.status === "unsupported" || state.status === "denied"}>
+    <Button type="button" variant="primary" onClick={() => { void subscribe(); }} loading={state.busy} disabled={state.status === "loading" || state.status === "unsupported" || state.status === "denied"}>
       {state.busy ? "Enabling..." : "Enable on this browser"}
     </Button>
   );
   const actionControls = state.status === "error" ? (
     <>
       {primaryAction}
-      <Button type="button" variant="ghost" onClick={() => void actions.refresh()}>Retry</Button>
+      <Button type="button" variant="ghost" onClick={retry} loading={state.busy}>Retry</Button>
     </>
   ) : primaryAction;
 

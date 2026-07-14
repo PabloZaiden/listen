@@ -6,7 +6,7 @@ import { LIST_NOTIFICATIONS_DEFAULT_LIMIT, NOTIFICATION_SOURCE_NAME_MAX_CHARS } 
 import {
   Button,
   ActionMenu,
-  ConfirmDialog,
+  ConfirmModal,
   DataList,
   DataListRow,
   ErrorState,
@@ -21,6 +21,7 @@ import {
   replaceWebAppRoute,
   renderWebApp,
   useRealtimeRefresh,
+  useToast,
   type ActionMenuItem,
   type SidebarNode,
   type WebAppRoute,
@@ -39,6 +40,7 @@ import {
   type NotificationListResponse,
 } from "./notification-pagination";
 import { SWIPE_ACTION_WIDTH, clampSwipeOffset, detectSwipeIntent, shouldCancelSwipeClick, shouldRevealSwipeActions, shouldShowSwipeActionTray, type SwipeIntent } from "./swipe-actions";
+import { mutationErrorMessage, useMutationTracker } from "./mutation-state";
 import "./styles.css";
 
 type ConfirmState = {
@@ -46,6 +48,7 @@ type ConfirmState = {
   description?: string;
   confirmLabel: string;
   danger?: boolean;
+  successMessage?: string;
   action: () => Promise<void>;
 };
 
@@ -74,6 +77,10 @@ function sourceFilterRoute(sourceId?: string): WebAppRoute {
   return sourceId ? { view: "inbox", sourceId } : { view: "inbox" };
 }
 
+function notificationReadMutationKey(notificationId: string): string {
+  return `notification:${notificationId}:read-state`;
+}
+
 function normalizeMarkdownForDisplay(value: string): string {
   return value.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n");
 }
@@ -94,7 +101,10 @@ type NotificationListRowProps = {
   openRowId?: string;
   isOpen: boolean;
   setOpenRowId: (id: string | undefined) => void;
-  toggleNotificationReadState: (notification: NotificationListItem) => Promise<void>;
+  toggleNotificationReadState: (notification: NotificationListItem, mutationKey: string) => Promise<boolean>;
+  notificationMutationKey: string;
+  notificationMutationBusy: boolean;
+  reportMutationError: (error: unknown) => void;
   requestDeleteNotification: (notification: NotificationListItem) => void;
 };
 
@@ -114,6 +124,9 @@ function NotificationListRow({
   isOpen,
   setOpenRowId,
   toggleNotificationReadState,
+  notificationMutationKey,
+  notificationMutationBusy,
+  reportMutationError,
   requestDeleteNotification,
 }: NotificationListRowProps) {
   const swipeStart = useRef<SwipeStart | undefined>(undefined);
@@ -203,6 +216,7 @@ function NotificationListRow({
   }
 
   function handleRowClick(): void {
+    if (notificationMutationBusy) return;
     if (suppressClick.current) {
       suppressClick.current = false;
       return;
@@ -215,11 +229,16 @@ function NotificationListRow({
   }
 
   async function runMarkAction(): Promise<void> {
-    closeActions();
-    await toggleNotificationReadState(notification);
+    if (notificationMutationBusy) return;
+    try {
+      await toggleNotificationReadState(notification, notificationMutationKey);
+    } catch (error) {
+      reportMutationError(error);
+    }
   }
 
   function runDeleteAction(): void {
+    if (notificationMutationBusy) return;
     closeActions();
     requestDeleteNotification(notification);
   }
@@ -231,14 +250,16 @@ function NotificationListRow({
           type="button"
           className="listen-swipe-action"
           tabIndex={isOpen ? 0 : -1}
+          disabled={notificationMutationBusy}
           onClick={() => void runMarkAction()}
         >
-          {markLabel}
+          {notificationMutationBusy ? "Updating..." : markLabel}
         </button>
         <button
           type="button"
           className="listen-swipe-action destructive"
           tabIndex={isOpen ? 0 : -1}
+          disabled={notificationMutationBusy}
           onClick={runDeleteAction}
         >
           Delete
@@ -426,7 +447,9 @@ function useNotifications(sourceId?: string): NotificationLoader {
     setError(undefined);
     setLoadMoreError(undefined);
     setLoaded(false);
-    void refreshInternal(true);
+    void refreshInternal(true).catch((requestError) => {
+      setError(toNotificationLoadError(requestError));
+    });
     return () => {
       activeRequestRef.current?.abort();
       activeRequestRef.current = undefined;
@@ -448,7 +471,19 @@ function useNotifications(sourceId?: string): NotificationLoader {
   };
 }
 
-function InboxView({ route, refreshSources, requestConfirm }: { route: WebAppRoute; refreshSources: () => Promise<void>; requestConfirm: (confirm: ConfirmState) => void }) {
+function InboxView({
+  route,
+  refreshSources,
+  requestConfirm,
+  notificationRefreshToken,
+}: {
+  route: WebAppRoute;
+  refreshSources: () => Promise<void>;
+  requestConfirm: (confirm: ConfirmState) => void;
+  notificationRefreshToken: number;
+}) {
+  const toast = useToast();
+  const notificationMutations = useMutationTracker();
   const sourceId = typeof route.sourceId === "string" ? route.sourceId : undefined;
   const {
     result,
@@ -469,6 +504,14 @@ function InboxView({ route, refreshSources, requestConfirm }: { route: WebAppRou
       await Promise.all([refreshSources(), refreshNotifications()]);
     },
   });
+  const lastNotificationRefreshToken = useRef(notificationRefreshToken);
+  useEffect(() => {
+    if (lastNotificationRefreshToken.current === notificationRefreshToken) return;
+    lastNotificationRefreshToken.current = notificationRefreshToken;
+    void refreshNotifications().catch((error) => {
+      toast.error(mutationErrorMessage(error, "Could not refresh notifications."));
+    });
+  }, [notificationRefreshToken, refreshNotifications, toast]);
   useEffect(() => {
     if (!openRowId) return undefined;
     function closeOpenRowFromDocumentPointer(event: PointerEvent): void {
@@ -480,12 +523,44 @@ function InboxView({ route, refreshSources, requestConfirm }: { route: WebAppRou
   }, [openRowId]);
   const notifications = result?.notifications ?? [];
 
-  async function toggleNotificationReadState(notification: NotificationListItem): Promise<void> {
+  function reportNotificationMutationError(error: unknown): void {
+    toast.error(mutationErrorMessage(error, "Could not update the notification."));
+  }
+
+  async function toggleNotificationReadState(notification: NotificationListItem, mutationKey: string): Promise<boolean> {
     const action = notification.openedAt ? "unread" : "read";
-    const response = await appJson<{ notification: NotificationListItem }>(`/api/notifications/${encodeURIComponent(notification.id)}/${action}`, { method: "POST" });
-    updateNotification(response.notification);
-    setOpenRowId(undefined);
-    await refreshNotifications();
+    if (!notificationMutations.start(mutationKey)) return false;
+    try {
+      let response: { notification: NotificationListItem };
+      try {
+        response = await appJson<{ notification: NotificationListItem }>(`/api/notifications/${encodeURIComponent(notification.id)}/${action}`, { method: "POST" });
+      } catch (error) {
+        toast.error(mutationErrorMessage(error, `Could not mark notification as ${action}.`));
+        return false;
+      }
+      updateNotification(response.notification);
+      setOpenRowId(undefined);
+      try {
+        await refreshNotifications();
+      } catch (error) {
+        toast.error(mutationErrorMessage(error, `Notification marked as ${action}, but could not refresh notifications.`));
+      }
+      return true;
+    } finally {
+      notificationMutations.finish(mutationKey);
+    }
+  }
+
+  function retryNotifications(): void {
+    void retry().catch((error: unknown) => {
+      toast.error(mutationErrorMessage(error, "Could not refresh notifications."));
+    });
+  }
+
+  function loadNextNotifications(): void {
+    void loadNext().catch((error: unknown) => {
+      toast.error(mutationErrorMessage(error, "Could not load more notifications."));
+    });
   }
 
   function requestDeleteNotification(notification: NotificationListItem): void {
@@ -494,6 +569,7 @@ function InboxView({ route, refreshSources, requestConfirm }: { route: WebAppRou
       description: "This notification will be permanently removed.",
       confirmLabel: "Delete notification",
       danger: true,
+      successMessage: "Notification deleted.",
       action: async () => {
         await appJson(`/api/notifications/${encodeURIComponent(notification.id)}`, { method: "DELETE" });
         removeNotification(notification.id);
@@ -516,7 +592,7 @@ function InboxView({ route, refreshSources, requestConfirm }: { route: WebAppRou
           <ErrorState
             title="Could not load notifications"
             description={error.message}
-            action={<Button type="button" loading={loading} onClick={() => void retry()}>Retry</Button>}
+            action={<Button type="button" loading={loading} onClick={retryNotifications}>Retry</Button>}
           />
         </Panel>
       ) : null}
@@ -524,24 +600,30 @@ function InboxView({ route, refreshSources, requestConfirm }: { route: WebAppRou
         <ErrorState
           title="Could not refresh notifications"
           description={error.message}
-          action={<Button type="button" onClick={() => void retry()}>Retry</Button>}
+          action={<Button type="button" onClick={retryNotifications}>Retry</Button>}
         />
       ) : null}
       {notifications.length > 0 ? (
         <Panel>
           <DataList>
-            {notifications.map((notification) => (
-              <NotificationListRow
-                key={notification.id}
-                notification={notification}
-                sourceId={sourceId}
-                openRowId={openRowId}
-                isOpen={openRowId === notification.id}
-                setOpenRowId={setOpenRowId}
-                toggleNotificationReadState={toggleNotificationReadState}
-                requestDeleteNotification={requestDeleteNotification}
-              />
-            ))}
+            {notifications.map((notification) => {
+              const mutationKey = notificationReadMutationKey(notification.id);
+              return (
+                <NotificationListRow
+                  key={notification.id}
+                  notification={notification}
+                  sourceId={sourceId}
+                  openRowId={openRowId}
+                  isOpen={openRowId === notification.id}
+                  setOpenRowId={setOpenRowId}
+                  toggleNotificationReadState={toggleNotificationReadState}
+                  notificationMutationKey={mutationKey}
+                  notificationMutationBusy={notificationMutations.isBusy(mutationKey)}
+                  reportMutationError={reportNotificationMutationError}
+                  requestDeleteNotification={requestDeleteNotification}
+                />
+              );
+            })}
           </DataList>
         </Panel>
       ) : null}
@@ -554,7 +636,7 @@ function InboxView({ route, refreshSources, requestConfirm }: { route: WebAppRou
             <span className="listen-pagination-summary" role="status">
               Showing {Math.min(notifications.length, result.total)} of {result.total} notifications
             </span>
-            <Button type="button" loading={loadingMore} onClick={() => void loadNext()}>
+            <Button type="button" loading={loadingMore} onClick={loadNextNotifications}>
               {loadingMore ? "Loading..." : "Load more"}
             </Button>
           </div>
@@ -562,7 +644,7 @@ function InboxView({ route, refreshSources, requestConfirm }: { route: WebAppRou
             <ErrorState
               title="Could not load more notifications"
               description={loadMoreError.message}
-              action={<Button type="button" onClick={() => void loadNext()}>Retry</Button>}
+              action={<Button type="button" onClick={loadNextNotifications}>Retry</Button>}
             />
           ) : null}
         </Panel>
@@ -640,6 +722,7 @@ function NotificationView({ route }: { route: WebAppRoute }) {
 }
 
 function SourcesView({ sources, refreshSources, requestConfirm }: { sources: SourceResponse[]; refreshSources: () => Promise<void>; requestConfirm: (confirm: ConfirmState) => void }) {
+  const toast = useToast();
   const [name, setName] = useState("");
   const [webhookUrl, setWebhookUrl] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -670,9 +753,16 @@ function SourcesView({ sources, refreshSources, requestConfirm }: { sources: Sou
       const response = await appJson<SourceMutationResponse>("/api/sources", { method: "POST", body: JSON.stringify({ name: trimmed }) });
       setWebhookUrl(response.webhookUrl);
       setName("");
-      await refreshSources();
+      try {
+        await refreshSources();
+      } catch (refreshError) {
+        toast.error(mutationErrorMessage(refreshError, "Source created, but the source list could not be refreshed."));
+      }
+      toast.success("Source created. The webhook URL is shown below.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const message = mutationErrorMessage(err, "Could not create source.");
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -684,10 +774,15 @@ function SourcesView({ sources, refreshSources, requestConfirm }: { sources: Sou
       description: `The old webhook URL for ${source.name} will stop working immediately.`,
       confirmLabel: "Rotate token",
       danger: true,
+      successMessage: "Source token rotated. The new webhook URL is shown below.",
       action: async () => {
         const response = await appJson<SourceMutationResponse>(`/api/sources/${encodeURIComponent(source.id)}/token/rotate`, { method: "POST" });
         setWebhookUrl(response.webhookUrl);
-        await refreshSources();
+        try {
+          await refreshSources();
+        } catch (refreshError) {
+          toast.error(mutationErrorMessage(refreshError, "Source token rotated, but the source list could not be refreshed."));
+        }
       },
     });
   }
@@ -698,9 +793,14 @@ function SourcesView({ sources, refreshSources, requestConfirm }: { sources: Sou
       description: `This will delete ${source.name} and all notifications from this source.`,
       confirmLabel: "Delete source",
       danger: true,
+      successMessage: "Source deleted.",
       action: async () => {
         await appJson(`/api/sources/${encodeURIComponent(source.id)}`, { method: "DELETE" });
-        await refreshSources();
+        try {
+          await refreshSources();
+        } catch (refreshError) {
+          toast.error(mutationErrorMessage(refreshError, "Source deleted, but the source list could not be refreshed."));
+        }
       },
     });
   }
@@ -720,7 +820,7 @@ function SourcesView({ sources, refreshSources, requestConfirm }: { sources: Sou
           </div>
         ) : null}
         <div className="listen-source-create">
-          <TextField label="Source name" value={name} onChange={(event) => setName(event.currentTarget.value)} error={error} />
+          <TextField label="Source name" value={name} disabled={busy} onChange={(event) => setName(event.currentTarget.value)} error={error} />
           <Button type="button" variant="primary" disabled={busy} onClick={() => void create()}>{busy ? "Creating..." : "Create source"}</Button>
         </div>
       </Panel>
@@ -752,13 +852,26 @@ function SourcesView({ sources, refreshSources, requestConfirm }: { sources: Sou
 }
 
 function ListenApp(): React.ReactElement {
+  const toast = useToast();
   const [sources, refreshSources] = useSources();
   const [confirmState, setConfirmState] = useState<ConfirmState>();
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [notificationRefreshToken, setNotificationRefreshToken] = useState(0);
+  const headerMutations = useMutationTracker();
 
   const sidebarNodes = useCallback((): SidebarNode[] => [
       { type: "item", id: "inbox", title: "Inbox", route: { view: "inbox" } },
       { type: "item", id: "sources", title: "Sources", route: { view: "sources" } },
   ], []);
+
+  const requestNotificationRefresh = useCallback((): void => {
+    setNotificationRefreshToken((current) => current + 1);
+  }, []);
+
+  const requestConfirm = useCallback((nextConfirmState: ConfirmState): void => {
+    if (confirmBusy) return;
+    setConfirmState(nextConfirmState);
+  }, [confirmBusy]);
 
   function sourceIdFromRoute(route: WebAppRoute): string | undefined {
     return typeof route.sourceId === "string" ? route.sourceId : undefined;
@@ -769,22 +882,35 @@ function ListenApp(): React.ReactElement {
   }
 
   async function markAllAsRead(sourceId: string | undefined): Promise<void> {
-    const params = new URLSearchParams();
-    if (sourceId) params.set("sourceId", sourceId);
-    await appJson(`/api/notifications/read${params.size ? `?${params}` : ""}`, { method: "POST" });
+    const mutationKey = `notifications:read:${sourceId ?? "all"}`;
+    if (!headerMutations.start(mutationKey)) return;
+    try {
+      const params = new URLSearchParams();
+      if (sourceId) params.set("sourceId", sourceId);
+      const response = await appJson<{ updatedCount?: number }>(`/api/notifications/read${params.size ? `?${params}` : ""}`, { method: "POST" });
+      requestNotificationRefresh();
+      const updatedCount = response.updatedCount ?? 0;
+      toast.success(updatedCount === 1 ? "1 notification marked as read." : `${updatedCount} notifications marked as read.`);
+    } catch (error) {
+      toast.error(mutationErrorMessage(error, "Could not mark notifications as read."));
+    } finally {
+      headerMutations.finish(mutationKey);
+    }
   }
 
   function deleteAll(sourceId: string | undefined): void {
     const sourceName = selectedSourceName(sourceId);
-    setConfirmState({
+    requestConfirm({
       title: sourceName ? `Delete ${sourceName} notifications?` : "Delete all notifications?",
       description: "This cannot be undone.",
       confirmLabel: "Delete all",
       danger: true,
+      successMessage: "Notifications deleted.",
       action: async () => {
         const params = new URLSearchParams();
         if (sourceId) params.set("sourceId", sourceId);
         await appJson(`/api/notifications${params.size ? `?${params}` : ""}`, { method: "DELETE" });
+        requestNotificationRefresh();
       },
     });
   }
@@ -792,20 +918,32 @@ function ListenApp(): React.ReactElement {
   async function markNotificationUnread(route: WebAppRoute): Promise<void> {
     const id = typeof route.id === "string" ? route.id : "";
     if (!id) return;
-    await appJson(`/api/notifications/${encodeURIComponent(id)}/unread`, { method: "POST" });
-    navigateTo(sourceFilterRoute(sourceIdFromRoute(route)));
+    const mutationKey = `notification:${id}:unread`;
+    if (!headerMutations.start(mutationKey)) return;
+    try {
+      await appJson(`/api/notifications/${encodeURIComponent(id)}/unread`, { method: "POST" });
+      requestNotificationRefresh();
+      navigateTo(sourceFilterRoute(sourceIdFromRoute(route)));
+      toast.success("Notification marked as unread.");
+    } catch (error) {
+      toast.error(mutationErrorMessage(error, "Could not mark notification as unread."));
+    } finally {
+      headerMutations.finish(mutationKey);
+    }
   }
 
   function deleteNotification(route: WebAppRoute): void {
     const id = typeof route.id === "string" ? route.id : "";
     if (!id) return;
-    setConfirmState({
+    requestConfirm({
       title: "Delete notification?",
       description: "This notification will be permanently removed.",
       confirmLabel: "Delete notification",
       danger: true,
+      successMessage: "Notification deleted.",
       action: async () => {
         await appJson(`/api/notifications/${encodeURIComponent(id)}`, { method: "DELETE" });
+        requestNotificationRefresh();
         navigateTo(sourceFilterRoute(sourceIdFromRoute(route)));
       },
     });
@@ -814,30 +952,67 @@ function ListenApp(): React.ReactElement {
   const headerActions = useCallback((route: WebAppRoute): ActionMenuItem[] => {
     if (route.view === "inbox") {
       const sourceId = sourceIdFromRoute(route);
+      const markAllReadKey = `notifications:read:${sourceId ?? "all"}`;
       return [
-        { id: "mark-all-read", label: "Mark all as read", onAction: () => void markAllAsRead(sourceId) },
-        { id: "delete-all", label: "Delete all", destructive: true, onAction: () => deleteAll(sourceId) },
+        {
+          id: "mark-all-read",
+          label: headerMutations.isBusy(markAllReadKey) ? "Marking as read..." : "Mark all as read",
+          disabled: headerMutations.isBusy(markAllReadKey),
+          onAction: () => { void markAllAsRead(sourceId); },
+        },
+        {
+          id: "delete-all",
+          label: "Delete all",
+          destructive: true,
+          disabled: confirmBusy,
+          onAction: () => deleteAll(sourceId),
+        },
       ];
     }
     if (route.view === "notification") {
+      const id = typeof route.id === "string" ? route.id : "";
+      const markUnreadKey = `notification:${id}:unread`;
       return [
-        { id: "mark-unread", label: "Mark as unread", onAction: () => void markNotificationUnread(route) },
-        { id: "delete", label: "Delete", destructive: true, onAction: () => deleteNotification(route) },
+        {
+          id: "mark-unread",
+          label: headerMutations.isBusy(markUnreadKey) ? "Marking as unread..." : "Mark as unread",
+          disabled: !id || headerMutations.isBusy(markUnreadKey),
+          onAction: () => { void markNotificationUnread(route); },
+        },
+        { id: "delete", label: "Delete", destructive: true, disabled: confirmBusy, onAction: () => deleteNotification(route) },
       ];
     }
     return [];
-  }, [sources]);
+  }, [confirmBusy, headerMutations, requestConfirm, requestNotificationRefresh, sources, toast]);
 
   const routes = useMemo(() => ({
-    inbox: (route: WebAppRoute) => <InboxView route={route} refreshSources={refreshSources} requestConfirm={setConfirmState} />,
+    inbox: (route: WebAppRoute) => (
+      <InboxView
+        route={route}
+        refreshSources={refreshSources}
+        requestConfirm={requestConfirm}
+        notificationRefreshToken={notificationRefreshToken}
+      />
+    ),
     notification: (route: WebAppRoute) => <NotificationView route={route} />,
-    sources: () => <SourcesView sources={sources} refreshSources={refreshSources} requestConfirm={setConfirmState} />,
-  }), [refreshSources, sources]);
+    sources: () => <SourcesView sources={sources} refreshSources={refreshSources} requestConfirm={requestConfirm} />,
+  }), [notificationRefreshToken, refreshSources, requestConfirm, sources]);
 
   async function runConfirm(): Promise<void> {
-    if (!confirmState) return;
-    await confirmState.action();
-    setConfirmState(undefined);
+    const currentConfirmState = confirmState;
+    if (!currentConfirmState || confirmBusy) return;
+    setConfirmBusy(true);
+    try {
+      await currentConfirmState.action();
+      setConfirmState(undefined);
+      if (currentConfirmState.successMessage) {
+        toast.success(currentConfirmState.successMessage);
+      }
+    } catch (error) {
+      toast.error(mutationErrorMessage(error, "Could not complete this action."));
+    } finally {
+      setConfirmBusy(false);
+    }
   }
 
   return (
@@ -869,14 +1044,17 @@ function ListenApp(): React.ReactElement {
         }}
       />
       {confirmState ? (
-        <ConfirmDialog
-          open
+        <ConfirmModal
+          isOpen
           title={confirmState.title}
           message={confirmState.description ?? confirmState.title}
           confirmLabel={confirmState.confirmLabel}
-          danger={confirmState.danger}
-          onCancel={() => setConfirmState(undefined)}
-          onConfirm={() => void runConfirm()}
+          variant={confirmState.danger ? "danger" : "primary"}
+          loading={confirmBusy}
+          onClose={() => {
+            if (!confirmBusy) setConfirmState(undefined);
+          }}
+          onConfirm={() => { void runConfirm(); }}
         />
       ) : null}
     </>
