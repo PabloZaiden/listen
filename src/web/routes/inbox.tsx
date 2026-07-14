@@ -59,7 +59,16 @@ export function InboxView({
   useRealtimeRefresh({
     resources: ["notifications", "sources"],
     refresh: async () => {
-      await Promise.all([refreshSources(), refreshNotifications()]);
+      const [sourcesResult, notificationsResult] = await Promise.allSettled([
+        refreshSources(),
+        refreshNotifications(),
+      ]);
+      if (sourcesResult.status === "rejected") {
+        toast.error(mutationErrorMessage(sourcesResult.reason, "Could not refresh sources."));
+      }
+      if (notificationsResult.status === "rejected") {
+        toast.error(mutationErrorMessage(notificationsResult.reason, "Could not refresh notifications."));
+      }
     },
   });
 
