@@ -7,7 +7,7 @@ import { browserPushEndpointRequestSchema, browserPushSubscribeRequestSchema, cr
 import { WEBHOOK_JSON_BODY_MAX_BYTES } from "@listen/shared";
 import { createLogger, setLogLevel } from "./core/logger";
 import { verifyWebhookToken } from "./core/webhook-tokens";
-import { createNotificationFromWebhook, deleteNotification, deleteNotifications, listNotifications, markNotificationRead, markNotificationUnread, markNotificationsRead, openNotification } from "./core/notifications";
+import { createNotificationFromWebhook, deleteNotification, deleteNotifications, getNotificationDetail, listNotifications, markNotificationRead, markNotificationUnread, markNotificationsRead } from "./core/notifications";
 import { createSource, deleteSourceAndNotifications, getSourceForWebhook, listSources, markSourceUsed, rotateSourceToken } from "./core/sources";
 import { getBrowserPushConfig, getBrowserPushSubscriptionStatus, subscribeBrowserPush, unsubscribeBrowserPush } from "./core/browser-push";
 import { initializeDatabase } from "./persistence/database";
@@ -101,7 +101,7 @@ function createRoutes(
       const deletedCount = deleteNotifications({
         userId: user.id,
         sourceId: query.sourceId,
-        opened: query.opened,
+        read: query.read,
       });
       ctx.userRealtime.publishChanged("notifications");
       return jsonResponse({ deletedCount });
@@ -121,7 +121,7 @@ function createRoutes(
     auth: "user",
     GET: (_req, ctx) => {
       const user = ctx.requireUser();
-      const notification = openNotification(ctx.params.id ?? "", user.id);
+      const notification = getNotificationDetail(ctx.params.id ?? "", user.id);
       if (!notification) return notFound();
       ctx.userRealtime.publishEntityChanged("notifications", notification.id);
       return jsonResponse({ notification });

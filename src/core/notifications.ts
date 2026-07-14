@@ -26,7 +26,7 @@ export interface ListNotificationsOptions {
   sourceId?: string;
   limit: number;
   offset: number;
-  opened?: boolean;
+  read?: boolean;
 }
 
 export interface ListNotificationsResult {
@@ -49,18 +49,18 @@ export function toNotificationListItem(notification: PersistedNotification): Not
     sourceId: notification.sourceId,
     icon: notification.icon,
     createdAt: notification.createdAt,
-    openedAt: notification.openedAt,
+    readAt: notification.readAt,
   };
 }
 
 function toNotificationDetail(notification: PersistedNotification): NotificationDetail {
-  if (!notification.openedAt) {
+  if (!notification.readAt) {
     throw new Error("Notification detail must be read before serialization");
   }
   return {
     ...toNotificationListItem(notification),
     markdownContent: notification.markdownContent,
-    openedAt: notification.openedAt,
+    readAt: notification.readAt,
   };
 }
 
@@ -112,9 +112,9 @@ export function listNotifications(options: ListNotificationsOptions): ListNotifi
 
 /**
  * Fetching notification detail marks an unread notification as read.
- * The openedAt field remains the persisted/public read timestamp for compatibility.
+ * The readAt field is the persisted/public read timestamp.
  */
-export function openNotification(id: string, userId: string): NotificationDetail | undefined {
+export function getNotificationDetail(id: string, userId: string): NotificationDetail | undefined {
   const ownerId = requireUserId(userId);
   const read = markPersistedNotificationRead(id, nowIso(), ownerId);
   if (!read) {
@@ -138,10 +138,10 @@ export function deleteNotification(id: string, userId: string): boolean {
   return deleted;
 }
 
-export function deleteNotifications(options: { userId: string; sourceId?: string; opened?: boolean }): number {
+export function deleteNotifications(options: { userId: string; sourceId?: string; read?: boolean }): number {
   const ownerId = requireUserId(options.userId);
   const deletedCount = deletePersistedNotifications({ ...options, userId: ownerId });
-  log.info("Notifications deleted", { sourceId: options.sourceId, opened: options.opened, deletedCount });
+  log.info("Notifications deleted", { sourceId: options.sourceId, read: options.read, deletedCount });
   return deletedCount;
 }
 
@@ -152,7 +152,7 @@ export function markNotificationRead(id: string, userId: string): NotificationLi
     log.warn("Notification read requested but notification was not found", { notificationId: id });
     return undefined;
   }
-  if (existing.openedAt) {
+  if (existing.readAt) {
     return toNotificationListItem(existing);
   }
   const read = markPersistedNotificationRead(id, nowIso(), ownerId);
@@ -172,7 +172,7 @@ export function markNotificationUnread(id: string, userId: string): Notification
     log.warn("Notification unread requested but notification was not found", { notificationId: id });
     return undefined;
   }
-  if (!existing.openedAt) {
+  if (!existing.readAt) {
     return toNotificationListItem(existing);
   }
   const unread = markPersistedNotificationUnread(id, ownerId);
@@ -187,7 +187,7 @@ export function markNotificationUnread(id: string, userId: string): Notification
 
 export function markNotificationsRead(userId: string, sourceId?: string): number {
   const ownerId = requireUserId(userId);
-  const updatedCount = markPersistedNotificationsRead({ userId: ownerId, sourceId, opened: false }, nowIso());
+  const updatedCount = markPersistedNotificationsRead({ userId: ownerId, sourceId, read: false }, nowIso());
   log.info("Notifications marked read", { sourceId, updatedCount });
   return updatedCount;
 }

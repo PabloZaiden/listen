@@ -74,10 +74,15 @@ repeated detail fetches do not change its state or the unread count. Use
 `POST /api/notifications/:id/read` or
 `POST /api/notifications/:id/unread` for individual changes.
 
-The existing `openedAt` response field and `opened=true|false` list/delete
-filter are retained as compatibility names for the read timestamp and
-read-state filter. The removed `/api/notifications/mark-read` alias is not
-supported.
+Notification responses expose the read timestamp as `readAt`. Use
+`read=true|false` as the list and delete read-state filter.
+
+## Database compatibility
+
+Listen initializes the current database schema directly and does not migrate
+database files from older versions. Older data directories are unsupported;
+use a fresh data directory or handle any data transfer out of band before
+starting the current release.
 
 ## Docker deployment
 

@@ -1,7 +1,6 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { runMigrations } from "./migrations";
 
 let database: Database | undefined;
 let databasePath: string | undefined;
@@ -48,7 +47,7 @@ export function initializeDatabase(dataDir = process.env["LISTEN_DATA_DIR"] ?? "
       source TEXT NOT NULL,
       icon_data_url TEXT,
       created_at TEXT NOT NULL,
-      opened_at TEXT,
+      read_at TEXT,
       FOREIGN KEY (user_id) REFERENCES webapp_users(id) ON DELETE CASCADE,
       FOREIGN KEY (source_id) REFERENCES webhook_sources(id) ON DELETE CASCADE
     );
@@ -79,13 +78,12 @@ export function initializeDatabase(dataDir = process.env["LISTEN_DATA_DIR"] ?? "
     CREATE INDEX IF NOT EXISTS idx_notifications_source_created_at
     ON notifications(source_id, created_at DESC, id DESC);
 
-    CREATE INDEX IF NOT EXISTS idx_notifications_opened_at
-    ON notifications(opened_at);
+    CREATE INDEX IF NOT EXISTS idx_notifications_read_at
+    ON notifications(read_at);
 
     CREATE INDEX IF NOT EXISTS idx_browser_push_user_next_attempt
     ON browser_push_subscriptions(user_id, next_attempt_at);
   `);
-  runMigrations(database);
   return database;
 }
 

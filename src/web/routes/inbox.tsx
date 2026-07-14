@@ -98,7 +98,7 @@ export function InboxView({
   }
 
   async function toggleNotificationReadState(notification: NotificationListItem, mutationKey: string): Promise<boolean> {
-    const action = notification.openedAt ? "unread" : "read";
+    const action = notification.readAt ? "unread" : "read";
     if (!notificationMutations.start(mutationKey)) return false;
     try {
       let updatedNotification: NotificationListItem;
