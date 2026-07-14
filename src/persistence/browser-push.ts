@@ -1,5 +1,6 @@
 import { getDatabase } from "./database";
 import { getPreference, setPreference } from "./preferences";
+import type { BrowserPushSubscriptionClaimOutcome } from "@listen/contracts";
 import { requireUserId } from "@listen/shared";
 
 const VAPID_PUBLIC_KEY_PREFERENCE = "browserPush.vapidPublicKey";
@@ -44,6 +45,11 @@ interface BrowserPushSubscriptionRow {
   disabled_at: string | null;
 }
 
+export interface BrowserPushSubscriptionClaimResult {
+  outcome: BrowserPushSubscriptionClaimOutcome;
+  subscription: PersistedBrowserPushSubscription;
+}
+
 function mapSubscription(row: BrowserPushSubscriptionRow): PersistedBrowserPushSubscription {
   return {
     id: row.id,
@@ -80,45 +86,68 @@ export function getBrowserPushSubscriptionByEndpoint(endpoint: string, userId: s
   return row ? mapSubscription(row) : undefined;
 }
 
-export function upsertBrowserPushSubscription(subscription: PersistedBrowserPushSubscription): PersistedBrowserPushSubscription | undefined {
+export function claimBrowserPushSubscription(subscription: PersistedBrowserPushSubscription): BrowserPushSubscriptionClaimResult {
   const userId = requireUserId(subscription.userId);
-  getDatabase().query(`
-    INSERT INTO browser_push_subscriptions (
-      id, user_id, endpoint, p256dh, auth, expiration_time, user_agent, created_at, updated_at,
-      last_success_at, last_failure_at, failure_count, next_attempt_at, disabled_at
-    )
-    VALUES (
-      $id, $userId, $endpoint, $p256dh, $auth, $expirationTime, $userAgent, $createdAt, $updatedAt,
-      $lastSuccessAt, $lastFailureAt, $failureCount, $nextAttemptAt, $disabledAt
-    )
-    ON CONFLICT(endpoint) DO UPDATE SET
-      user_id = $userId,
-      p256dh = $p256dh,
-      auth = $auth,
-      expiration_time = $expirationTime,
-      user_agent = $userAgent,
-      updated_at = $updatedAt,
-      failure_count = 0,
-      next_attempt_at = NULL,
-      disabled_at = NULL
-    WHERE browser_push_subscriptions.user_id = $userId
-  `).run({
-    id: subscription.id,
-    userId,
-    endpoint: subscription.endpoint,
-    p256dh: subscription.p256dh,
-    auth: subscription.auth,
-    expirationTime: subscription.expirationTime ?? null,
-    userAgent: subscription.userAgent ?? null,
-    createdAt: subscription.createdAt,
-    updatedAt: subscription.updatedAt,
-    lastSuccessAt: subscription.lastSuccessAt ?? null,
-    lastFailureAt: subscription.lastFailureAt ?? null,
-    failureCount: subscription.failureCount,
-    nextAttemptAt: subscription.nextAttemptAt ?? null,
-    disabledAt: subscription.disabledAt ?? null,
+  const database = getDatabase();
+  const claim = database.transaction(() => {
+    const existing = database.query("SELECT * FROM browser_push_subscriptions WHERE endpoint = $endpoint").get({ endpoint: subscription.endpoint }) as BrowserPushSubscriptionRow | null;
+    if (!existing) {
+      database.query(`
+        INSERT INTO browser_push_subscriptions (
+          id, user_id, endpoint, p256dh, auth, expiration_time, user_agent, created_at, updated_at,
+          last_success_at, last_failure_at, failure_count, next_attempt_at, disabled_at
+        )
+        VALUES (
+          $id, $userId, $endpoint, $p256dh, $auth, $expirationTime, $userAgent, $createdAt, $updatedAt,
+          NULL, NULL, 0, NULL, NULL
+        )
+      `).run({
+        id: subscription.id,
+        userId,
+        endpoint: subscription.endpoint,
+        p256dh: subscription.p256dh,
+        auth: subscription.auth,
+        expirationTime: subscription.expirationTime ?? null,
+        userAgent: subscription.userAgent ?? null,
+        createdAt: subscription.createdAt,
+        updatedAt: subscription.updatedAt,
+      });
+    } else {
+      database.query(`
+        UPDATE browser_push_subscriptions
+        SET
+          user_id = $userId,
+          p256dh = $p256dh,
+          auth = $auth,
+          expiration_time = $expirationTime,
+          user_agent = $userAgent,
+          updated_at = $updatedAt,
+          last_failure_at = NULL,
+          failure_count = 0,
+          next_attempt_at = NULL,
+          disabled_at = NULL
+        WHERE endpoint = $endpoint
+      `).run({
+        userId,
+        endpoint: subscription.endpoint,
+        p256dh: subscription.p256dh,
+        auth: subscription.auth,
+        expirationTime: subscription.expirationTime ?? null,
+        userAgent: subscription.userAgent ?? null,
+        updatedAt: subscription.updatedAt,
+      });
+    }
+
+    const row = database.query("SELECT * FROM browser_push_subscriptions WHERE endpoint = $endpoint").get({ endpoint: subscription.endpoint }) as BrowserPushSubscriptionRow | null;
+    if (!row) {
+      throw new Error("Browser push subscription claim did not persist");
+    }
+    const outcome: BrowserPushSubscriptionClaimOutcome = existing
+      ? existing.user_id === userId ? "refreshed" : "transferred"
+      : "created";
+    return { outcome, subscription: mapSubscription(row) };
   });
-  return getBrowserPushSubscriptionByEndpoint(subscription.endpoint, userId);
+  return claim.immediate();
 }
 
 export function listActiveBrowserPushSubscriptions(nowMs: number, nowIso: string, userId: string): PersistedBrowserPushSubscription[] {

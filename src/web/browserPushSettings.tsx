@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import type { BrowserPushConfigResponse, BrowserPushStatusResponse, BrowserPushSubscription } from "@listen/contracts";
+import type { BrowserPushConfigResponse, BrowserPushStatusResponse, BrowserPushSubscription, BrowserPushSubscriptionResponse } from "@listen/contracts";
 import { appJson, Button, FormGroup, FormSection } from "@pablozaiden/webapp/web";
 
 type BrowserPushUiState = "loading" | "unsupported" | "denied" | "unsubscribed" | "subscribed" | "error";
@@ -69,7 +69,7 @@ async function getApplicationServerKey(signal?: AbortSignal): Promise<Uint8Array
 }
 
 async function saveSubscription(subscription: PushSubscription, signal?: AbortSignal): Promise<void> {
-  await appJson<BrowserPushStatusResponse>("/api/browser-push/subscriptions", {
+  await appJson<BrowserPushSubscriptionResponse>("/api/browser-push/subscriptions", {
     method: "POST",
     signal,
     body: JSON.stringify({ subscription: toBrowserPushSubscription(subscription) }),

@@ -31,8 +31,15 @@ export const browserPushStatusResponseSchema = z.object({
   subscribed: z.boolean(),
 });
 
+export const browserPushSubscriptionClaimOutcomeSchema = z.enum([
+  "created",
+  "refreshed",
+  "transferred",
+]);
+
 export const browserPushSubscriptionResponseSchema = z.object({
   subscribed: z.literal(true),
+  outcome: browserPushSubscriptionClaimOutcomeSchema,
 });
 
 export type BrowserPushKeys = z.infer<typeof browserPushKeysSchema>;
@@ -41,4 +48,5 @@ export type BrowserPushSubscribeRequest = z.infer<typeof browserPushSubscribeReq
 export type BrowserPushEndpointRequest = z.infer<typeof browserPushEndpointRequestSchema>;
 export type BrowserPushConfigResponse = z.infer<typeof browserPushConfigResponseSchema>;
 export type BrowserPushStatusResponse = z.infer<typeof browserPushStatusResponseSchema>;
+export type BrowserPushSubscriptionClaimOutcome = z.infer<typeof browserPushSubscriptionClaimOutcomeSchema>;
 export type BrowserPushSubscriptionResponse = z.infer<typeof browserPushSubscriptionResponseSchema>;
