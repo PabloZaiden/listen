@@ -36,6 +36,16 @@ describe("database schema", () => {
     }
   });
 
+  test("keeps source notification cascades enabled", () => {
+    expect(foreignKeys("notifications")).toContainEqual(expect.objectContaining({
+      from: "source_id",
+      table: "webhook_sources",
+      on_delete: "CASCADE",
+    }));
+    const foreignKeysEnabled = getDatabase().query("PRAGMA foreign_keys").get() as { foreign_keys: number };
+    expect(foreignKeysEnabled.foreign_keys).toBe(1);
+  });
+
   test("stores webhook source credentials as hashes only", () => {
     const columns = columnInfo("webhook_sources").map((column) => column.name);
 

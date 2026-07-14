@@ -57,9 +57,18 @@ App routes should be declared in `src/server.ts` with `defineRoutes` and delegat
 
 Use Bun APIs and scripts. Do not add Node-only tooling. Use `bun:sqlite` for SQLite and `@pablozaiden/webapp` for HTTP/realtime serving.
 
+## Persistence
+
+Use database constraints and foreign-key cascades as the single source of
+referential behavior; do not duplicate cascade deletes in application code.
+Run multi-step persistence mutations that must succeed together inside a
+database transaction.
+
 ## Testing
 
 Use `bun test` through repository scripts. Prefer API/integration tests over brittle frontend component tests. Do not add frontend tests that only reimplement or assert static component markup; cover behavior, data flow, contracts, or integration seams instead. Do not add Playwright tests; use Playwright only for manual UI validation when needed.
+Test externally required atomic behavior rather than duplicating direct schema
+operations in application-level tests.
 
 ## Database Migrations
 

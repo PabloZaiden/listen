@@ -7,7 +7,9 @@ import { sourceMutationResponseSchema, sourceResponseSchema, type SourceMutation
 import { BROWSER_PUSH_ENDPOINT_MAX_CHARS, LIST_NOTIFICATIONS_DEFAULT_LIMIT, LIST_NOTIFICATIONS_MAX_LIMIT, WEBHOOK_JSON_BODY_MAX_BYTES } from "@listen/shared";
 import { createFetchHandler, getWebhookCallerKey } from "../../src/server";
 import { setBrowserPushSenderForTests } from "../../src/core/browser-push";
+import { subscribe } from "../../src/core/event-emitter";
 import { getLogLevel } from "../../src/core/logger";
+import { deleteSourceAndNotifications } from "../../src/core/sources";
 import { createWebhookRateLimiter, type WebhookRateLimitOptions } from "../../src/core/webhook-rate-limit";
 import { getBrowserPushSubscriptionByEndpoint, markBrowserPushSubscriptionFailed } from "../../src/persistence/browser-push";
 import { getDatabase } from "../../src/persistence/database";
@@ -699,8 +701,23 @@ describe("API", () => {
       expect(webhookResponse.status).toBe(201);
     }
 
-    const deleted = await request(`/api/sources/${first.source.id}`, { method: "DELETE" });
-    expect(deleted.status).toBe(200);
+    const deletedNotificationEvents: Array<{ sourceId?: string; deletedCount: number }> = [];
+    const unsubscribe = subscribe((event) => {
+      if (event.type === "notifications.deleted") {
+        deletedNotificationEvents.push(event);
+      }
+    });
+    try {
+      const deleted = await request(`/api/sources/${first.source.id}`, { method: "DELETE" });
+      expect(deleted.status).toBe(200);
+    } finally {
+      unsubscribe();
+    }
+    expect(deletedNotificationEvents).toHaveLength(1);
+    expect(deletedNotificationEvents[0]).toMatchObject({
+      sourceId: first.source.id,
+      deletedCount: 1,
+    });
 
     const sources = await json<{ sources: Array<{ id: string }> }>(await request("/api/sources"));
     expect(sources.sources.some((source) => source.id === first.source.id)).toBe(false);
@@ -711,7 +728,7 @@ describe("API", () => {
     expect(secondList.notifications).toHaveLength(1);
   });
 
-  test("source schema delete cascades notifications", async () => {
+  test("source deletion rolls back when source deletion fails", async () => {
     const created = await createSource();
     const webhookResponse = await webhook(created.webhookUrl, {
       method: "POST",
@@ -720,10 +737,32 @@ describe("API", () => {
     });
     expect(webhookResponse.status).toBe(201);
 
-    getDatabase().query("DELETE FROM webhook_sources WHERE id = $id").run({ id: created.source.id });
+    getDatabase().exec(`
+      CREATE TRIGGER fail_source_delete
+      BEFORE DELETE ON webhook_sources
+      BEGIN
+        SELECT RAISE(ABORT, 'injected source deletion failure');
+      END;
+    `);
 
-    const list = await json<{ notifications: unknown[] }>(await request(`/api/notifications?sourceId=${created.source.id}`));
-    expect(list.notifications).toHaveLength(0);
+    const events: string[] = [];
+    const unsubscribe = subscribe((event) => {
+      events.push(event.type);
+    });
+    try {
+      expect(() => deleteSourceAndNotifications(created.source.id, currentOwnerId())).toThrow();
+    } finally {
+      unsubscribe();
+      getDatabase().exec("DROP TRIGGER fail_source_delete");
+    }
+
+    expect(events).toEqual([]);
+    const sources = await json<{ sources: Array<{ id: string }> }>(await request("/api/sources"));
+    expect(sources.sources.some((source) => source.id === created.source.id)).toBe(true);
+    const notifications = await json<{ notifications: unknown[] }>(
+      await request(`/api/notifications?sourceId=${created.source.id}`),
+    );
+    expect(notifications.notifications).toHaveLength(1);
   });
 
   test("notification detail marks opened and deletes work", async () => {
@@ -1186,6 +1225,12 @@ describe("API", () => {
     expect(rotateForB.status).toBe(404);
     const deleteSourceForB = await requestAs(userB, `/api/sources/${sourceA.source.id}`, { method: "DELETE" });
     expect(deleteSourceForB.status).toBe(404);
+    const sourcesAfterDeleteAttempt = await json<{ sources: Array<{ id: string }> }>(await requestAs(userA, "/api/sources"));
+    expect(sourcesAfterDeleteAttempt.sources.map((source) => source.id)).toEqual([sourceA.source.id]);
+    const notificationsAfterDeleteAttempt = await json<{ pagination: { total: number } }>(
+      await requestAs(userA, "/api/notifications"),
+    );
+    expect(notificationsAfterDeleteAttempt.pagination.total).toBe(1);
 
     const lookupAFromB = await requestAs(userB, "/api/browser-push/subscriptions/lookup", {
       method: "POST",

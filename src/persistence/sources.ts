@@ -96,14 +96,22 @@ export function updateSourceLastUsedAt(id: string, lastUsedAt: string, userId: s
 export function deleteSource(id: string, userId: string): { source: PersistedSource; deletedNotificationCount: number } | undefined {
   const database = getDatabase();
   const ownerId = requireUserId(userId);
-  const source = getSourceById(id, ownerId);
-  if (!source) {
-    return undefined;
-  }
-  const deletedNotifications = database.query("DELETE FROM notifications WHERE source_id = $id AND user_id = $userId").run({ id, userId: ownerId });
-  const deletedSource = database.query("DELETE FROM webhook_sources WHERE id = $id AND user_id = $userId").run({ id, userId: ownerId });
-  if (deletedSource.changes === 0) {
-    return undefined;
-  }
-  return { source, deletedNotificationCount: deletedNotifications.changes };
+  const deletion = database.transaction(() => {
+    const source = getSourceById(id, ownerId);
+    if (!source) {
+      return undefined;
+    }
+
+    const notificationCount = database.query(
+      "SELECT COUNT(*) as count FROM notifications WHERE source_id = $id AND user_id = $userId",
+    ).get({ id, userId: ownerId }) as { count: number };
+    const deletedSource = database.query(
+      "DELETE FROM webhook_sources WHERE id = $id AND user_id = $userId",
+    ).run({ id, userId: ownerId });
+    if (deletedSource.changes === 0) {
+      return undefined;
+    }
+    return { source, deletedNotificationCount: notificationCount.count };
+  });
+  return deletion.immediate();
 }
