@@ -98,9 +98,10 @@ function checkBucket(bucket: RateLimitBucket | undefined, limit: number, nowMs: 
 
 function removeExpiredBuckets(buckets: Map<string, RateLimitBucket>, nowMs: number, idleTtlMs: number): void {
   for (const [key, bucket] of buckets) {
-    if (nowMs - bucket.lastSeenAt >= idleTtlMs) {
-      buckets.delete(key);
+    if (nowMs - bucket.lastSeenAt < idleTtlMs) {
+      break;
     }
+    buckets.delete(key);
   }
 }
 
