@@ -373,7 +373,7 @@ function useNotifications(sourceId?: string): NotificationLoader {
     } finally {
       if (!ownsRequest(controller, generation)) return;
       activeRequestRef.current = undefined;
-      if (reset) setLoading(false);
+      setLoading(false);
     }
   }, [requestPage, sourceId]);
 
