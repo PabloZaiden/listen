@@ -1,4 +1,5 @@
 import { getDatabase } from "./database";
+import { requireUserId } from "@listen/shared";
 
 export interface PersistedSource {
   id: string;
@@ -13,7 +14,7 @@ export interface PersistedSource {
 
 interface SourceRow {
   id: string;
-  user_id: string | null;
+  user_id: string;
   name: string;
   token_hash: string;
   created_at: string;
@@ -25,7 +26,7 @@ interface SourceRow {
 function mapSource(row: SourceRow): PersistedSource {
   return {
     id: row.id,
-    userId: row.user_id ?? "",
+    userId: row.user_id,
     name: row.name,
     tokenHash: row.token_hash,
     createdAt: row.created_at,
@@ -36,12 +37,13 @@ function mapSource(row: SourceRow): PersistedSource {
 }
 
 export function insertSource(source: PersistedSource): void {
+  const userId = requireUserId(source.userId);
   getDatabase().query(`
     INSERT INTO webhook_sources (id, user_id, name, token_hash, created_at, updated_at, last_used_at, disabled_at)
     VALUES ($id, $userId, $name, $tokenHash, $createdAt, $updatedAt, $lastUsedAt, $disabledAt)
   `).run({
     id: source.id,
-    userId: source.userId,
+    userId,
     name: source.name,
     tokenHash: source.tokenHash,
     createdAt: source.createdAt,
@@ -51,54 +53,55 @@ export function insertSource(source: PersistedSource): void {
   });
 }
 
-export function listSources(includeDisabled: boolean, userId?: string): PersistedSource[] {
+export function listSources(includeDisabled: boolean, userId: string): PersistedSource[] {
   const database = getDatabase();
-  if (userId) {
-    const sql = includeDisabled
-      ? "SELECT * FROM webhook_sources WHERE user_id = $userId ORDER BY created_at DESC, id DESC"
-      : "SELECT * FROM webhook_sources WHERE user_id = $userId AND disabled_at IS NULL ORDER BY created_at DESC, id DESC";
-    return (database.query(sql).all({ userId }) as SourceRow[]).map(mapSource);
-  }
+  const ownerId = requireUserId(userId);
   const sql = includeDisabled
-    ? "SELECT * FROM webhook_sources ORDER BY created_at DESC, id DESC"
-    : "SELECT * FROM webhook_sources WHERE disabled_at IS NULL ORDER BY created_at DESC, id DESC";
-  return (database.query(sql).all() as SourceRow[]).map(mapSource);
+    ? "SELECT * FROM webhook_sources WHERE user_id = $userId ORDER BY created_at DESC, id DESC"
+    : "SELECT * FROM webhook_sources WHERE user_id = $userId AND disabled_at IS NULL ORDER BY created_at DESC, id DESC";
+  return (database.query(sql).all({ userId: ownerId }) as SourceRow[]).map(mapSource);
 }
 
-export function getSourceById(id: string, userId?: string): PersistedSource | undefined {
-  const database = getDatabase();
-  const row = userId
-    ? database.query("SELECT * FROM webhook_sources WHERE id = $id AND user_id = $userId").get({ id, userId }) as SourceRow | null
-    : database.query("SELECT * FROM webhook_sources WHERE id = $id").get({ id }) as SourceRow | null;
+export function getSourceById(id: string, userId: string): PersistedSource | undefined {
+  const ownerId = requireUserId(userId);
+  const row = getDatabase().query("SELECT * FROM webhook_sources WHERE id = $id AND user_id = $userId").get({ id, userId: ownerId }) as SourceRow | null;
   return row ? mapSource(row) : undefined;
 }
 
-export function updateSourceTokenHash(id: string, tokenHash: string, updatedAt: string): PersistedSource | undefined {
+export function getSourceByIdForWebhook(id: string): PersistedSource | undefined {
+  const row = getDatabase().query("SELECT * FROM webhook_sources WHERE id = $id").get({ id }) as SourceRow | null;
+  return row ? mapSource(row) : undefined;
+}
+
+export function updateSourceTokenHash(id: string, tokenHash: string, updatedAt: string, userId: string): PersistedSource | undefined {
+  const ownerId = requireUserId(userId);
   getDatabase().query(`
     UPDATE webhook_sources
     SET token_hash = $tokenHash, updated_at = $updatedAt
-    WHERE id = $id
-  `).run({ id, tokenHash, updatedAt });
-  return getSourceById(id);
+    WHERE id = $id AND user_id = $userId
+  `).run({ id, tokenHash, updatedAt, userId: ownerId });
+  return getSourceById(id, ownerId);
 }
 
-export function updateSourceLastUsedAt(id: string, lastUsedAt: string): PersistedSource | undefined {
+export function updateSourceLastUsedAt(id: string, lastUsedAt: string, userId: string): PersistedSource | undefined {
+  const ownerId = requireUserId(userId);
   getDatabase().query(`
     UPDATE webhook_sources
     SET last_used_at = $lastUsedAt, updated_at = $lastUsedAt
-    WHERE id = $id
-  `).run({ id, lastUsedAt });
-  return getSourceById(id);
+    WHERE id = $id AND user_id = $userId
+  `).run({ id, lastUsedAt, userId: ownerId });
+  return getSourceById(id, ownerId);
 }
 
-export function deleteSource(id: string, userId?: string): { source: PersistedSource; deletedNotificationCount: number } | undefined {
+export function deleteSource(id: string, userId: string): { source: PersistedSource; deletedNotificationCount: number } | undefined {
   const database = getDatabase();
-  const source = getSourceById(id, userId);
+  const ownerId = requireUserId(userId);
+  const source = getSourceById(id, ownerId);
   if (!source) {
     return undefined;
   }
-  const deletedNotifications = database.query("DELETE FROM notifications WHERE source_id = $id AND ($userId IS NULL OR user_id = $userId)").run({ id, userId: userId ?? null });
-  const deletedSource = database.query("DELETE FROM webhook_sources WHERE id = $id AND ($userId IS NULL OR user_id = $userId)").run({ id, userId: userId ?? null });
+  const deletedNotifications = database.query("DELETE FROM notifications WHERE source_id = $id AND user_id = $userId").run({ id, userId: ownerId });
+  const deletedSource = database.query("DELETE FROM webhook_sources WHERE id = $id AND user_id = $userId").run({ id, userId: ownerId });
   if (deletedSource.changes === 0) {
     return undefined;
   }

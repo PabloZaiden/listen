@@ -1,6 +1,8 @@
 import "./../setup";
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import type { RuntimeConfig } from "@pablozaiden/webapp/server";
+import { sqliteWebAppStore, type UserRecord } from "@pablozaiden/webapp/server";
 import { BROWSER_PUSH_ENDPOINT_MAX_CHARS, LIST_NOTIFICATIONS_DEFAULT_LIMIT, LIST_NOTIFICATIONS_MAX_LIMIT, WEBHOOK_JSON_BODY_MAX_BYTES } from "@listen/shared";
 import { createFetchHandler } from "../../src/server";
 import { setBrowserPushSenderForTests } from "../../src/core/browser-push";
@@ -16,6 +18,61 @@ async function request(path: string, init?: RequestInit, config?: Partial<Runtim
     throw new Error("Request did not return a response");
   }
   return response;
+}
+
+interface AuthenticatedTestUser {
+  userId: string;
+  token: string;
+}
+
+function frameworkStore() {
+  const dataDir = process.env["LISTEN_DATA_DIR"];
+  if (!dataDir) {
+    throw new Error("LISTEN_DATA_DIR is required for authenticated test fixtures");
+  }
+  const store = sqliteWebAppStore({ dataDir, fileName: "listen.db" });
+  store.initialize();
+  return store;
+}
+
+function createAuthenticatedTestUser(username: string): AuthenticatedTestUser {
+  const store = frameworkStore();
+  const createdAt = new Date().toISOString();
+  const user: UserRecord = {
+    id: crypto.randomUUID(),
+    username,
+    role: "user",
+    passkeyConfigured: false,
+    authVersion: 1,
+    createdAt,
+    updatedAt: createdAt,
+  };
+  store.createUser(user);
+  const token = `listen_test_${crypto.randomUUID()}`;
+  store.saveApiKey({
+    id: crypto.randomUUID(),
+    userId: user.id,
+    name: `${username} test key`,
+    prefix: "listen_test",
+    tokenHash: createHash("sha256").update(token, "utf8").digest("base64url"),
+    scopes: ["*"],
+    createdAt,
+  });
+  return { userId: user.id, token };
+}
+
+async function requestAs(user: AuthenticatedTestUser, path: string, init?: RequestInit): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  headers.set("authorization", `Bearer ${user.token}`);
+  return request(path, { ...init, headers });
+}
+
+function currentOwnerId(): string {
+  const owner = frameworkStore().getOwnerUser();
+  if (!owner) {
+    throw new Error("Expected the disabled-auth owner to exist");
+  }
+  return owner.id;
 }
 
 async function json<T>(response: Response): Promise<T> {
@@ -836,10 +893,123 @@ describe("API", () => {
     await attempted;
 
     await waitForExpectation(() => {
-      expect(getBrowserPushSubscriptionByEndpoint(goneEndpoint)).toBeUndefined();
-      const temporarySubscription = getBrowserPushSubscriptionByEndpoint(temporaryEndpoint);
+      const ownerId = currentOwnerId();
+      expect(getBrowserPushSubscriptionByEndpoint(goneEndpoint, ownerId)).toBeUndefined();
+      const temporarySubscription = getBrowserPushSubscriptionByEndpoint(temporaryEndpoint, ownerId);
       expect(temporarySubscription?.failureCount).toBe(1);
       expect(temporarySubscription?.nextAttemptAt).toBeTruthy();
     });
+  });
+
+  test("authenticated users cannot access each other's sources, notifications, or push subscriptions", async () => {
+    const userA = createAuthenticatedTestUser("ownership-a");
+    const userB = createAuthenticatedTestUser("ownership-b");
+    const createOwnedSource = async (user: AuthenticatedTestUser, name: string): Promise<{ source: { id: string; name: string }; webhookUrl: string }> => {
+      const response = await requestAs(user, "/api/sources", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      expect(response.status).toBe(201);
+      return json(response);
+    };
+    const sourceA = await createOwnedSource(userA, "User A source");
+    const sourceB = await createOwnedSource(userB, "User B source");
+
+    const sourcesForA = await json<{ sources: Array<{ id: string }> }>(await requestAs(userA, "/api/sources"));
+    const sourcesForB = await json<{ sources: Array<{ id: string }> }>(await requestAs(userB, "/api/sources"));
+    expect(sourcesForA.sources.map((source) => source.id)).toEqual([sourceA.source.id]);
+    expect(sourcesForB.sources.map((source) => source.id)).toEqual([sourceB.source.id]);
+
+    const endpointA = "https://push.example.test/ownership/a";
+    const endpointB = "https://push.example.test/ownership/b";
+    for (const [user, endpoint] of [[userA, endpointA], [userB, endpointB]] as const) {
+      const response = await requestAs(user, "/api/browser-push/subscriptions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ subscription: browserPushSubscription(endpoint) }),
+      });
+      expect(response.status).toBe(201);
+    }
+
+    const deliveredEndpoints: string[] = [];
+    setBrowserPushSenderForTests(async (subscription) => {
+      deliveredEndpoints.push(subscription.endpoint);
+      return { statusCode: 201, body: "", headers: {} };
+    });
+
+    const webhookResponse = await webhook(sourceA.webhookUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "User A notification", shortDescription: "A", markdownContent: "A" }),
+    });
+    expect(webhookResponse.status).toBe(201);
+    await waitForExpectation(() => {
+      expect(deliveredEndpoints).toEqual([endpointA]);
+    });
+
+    const notificationsForA = await json<{ notifications: Array<{ id: string }>; pagination: { total: number } }>(
+      await requestAs(userA, "/api/notifications"),
+    );
+    const notificationsForB = await json<{ notifications: unknown[]; pagination: { total: number } }>(
+      await requestAs(userB, "/api/notifications"),
+    );
+    expect(notificationsForA.pagination.total).toBe(1);
+    expect(notificationsForA.notifications).toHaveLength(1);
+    expect(notificationsForB.pagination.total).toBe(0);
+    expect(notificationsForB.notifications).toHaveLength(0);
+
+    const notificationId = notificationsForA.notifications[0]?.id;
+    expect(notificationId).toBeTruthy();
+    for (const [path, method] of [
+      [`/api/notifications/${notificationId}`, "GET"],
+      [`/api/notifications/${notificationId}/read`, "POST"],
+      [`/api/notifications/${notificationId}/unread`, "POST"],
+      [`/api/notifications/${notificationId}`, "DELETE"],
+    ] as const) {
+      const response = await requestAs(userB, path, { method });
+      expect(response.status).toBe(404);
+    }
+
+    const markReadForB = await requestAs(userB, "/api/notifications/mark-read", { method: "POST" });
+    expect(await json<{ updatedCount: number }>(markReadForB)).toEqual({ updatedCount: 0 });
+    const deleteForB = await requestAs(userB, "/api/notifications", { method: "DELETE" });
+    expect(await json<{ deletedCount: number }>(deleteForB)).toEqual({ deletedCount: 0 });
+
+    const rotateForB = await requestAs(userB, `/api/sources/${sourceA.source.id}/token/rotate`, { method: "POST" });
+    expect(rotateForB.status).toBe(404);
+    const deleteSourceForB = await requestAs(userB, `/api/sources/${sourceA.source.id}`, { method: "DELETE" });
+    expect(deleteSourceForB.status).toBe(404);
+
+    const lookupAFromB = await requestAs(userB, "/api/browser-push/subscriptions/lookup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ endpoint: endpointA }),
+    });
+    expect(await json<{ subscribed: boolean }>(lookupAFromB)).toEqual({ subscribed: false });
+    const unsubscribeAFromB = await requestAs(userB, "/api/browser-push/subscriptions", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ endpoint: endpointA }),
+    });
+    expect(await json<{ subscribed: boolean }>(unsubscribeAFromB)).toEqual({ subscribed: false });
+    const lookupAFromA = await requestAs(userA, "/api/browser-push/subscriptions/lookup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ endpoint: endpointA }),
+    });
+    expect(await json<{ subscribed: boolean }>(lookupAFromA)).toEqual({ subscribed: true });
+
+    const persistedA = getBrowserPushSubscriptionByEndpoint(endpointA, userA.userId);
+    const persistedB = getBrowserPushSubscriptionByEndpoint(endpointB, userB.userId);
+    expect(persistedA?.lastSuccessAt).toBeTruthy();
+    expect(persistedB?.lastSuccessAt).toBeUndefined();
+
+    const sourcesAfterCrossUserMutations = await json<{ sources: Array<{ id: string }> }>(await requestAs(userA, "/api/sources"));
+    expect(sourcesAfterCrossUserMutations.sources.map((source) => source.id)).toEqual([sourceA.source.id]);
+    const notificationsAfterCrossUserMutations = await json<{ pagination: { total: number } }>(
+      await requestAs(userA, "/api/notifications"),
+    );
+    expect(notificationsAfterCrossUserMutations.pagination.total).toBe(1);
   });
 });

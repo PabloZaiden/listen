@@ -4,6 +4,7 @@ import {
   BROWSER_PUSH_FAILURE_BACKOFF_BASE_MS,
   BROWSER_PUSH_FAILURE_BACKOFF_MAX_MS,
   BROWSER_PUSH_USER_AGENT_MAX_CHARS,
+  requireUserId,
 } from "@listen/shared";
 import {
   deleteBrowserPushSubscriptionByEndpoint,
@@ -44,6 +45,13 @@ interface BrowserPushPayload {
 interface WebPushStatusError {
   statusCode?: number;
   body?: unknown;
+}
+
+export class BrowserPushSubscriptionConflictError extends Error {
+  public constructor() {
+    super("Browser push subscription belongs to another user");
+    this.name = "BrowserPushSubscriptionConflictError";
+  }
 }
 
 function nowIso(): string {
@@ -106,22 +114,27 @@ function toPersistedSubscription(subscription: BrowserPushSubscription, req: Req
   };
 }
 
-export function subscribeBrowserPush(subscription: BrowserPushSubscription, req: Request, userId = ""): BrowserPushStatusResponse {
-  const persisted = upsertBrowserPushSubscription(toPersistedSubscription(subscription, req, userId));
+export function subscribeBrowserPush(subscription: BrowserPushSubscription, req: Request, userId: string): BrowserPushStatusResponse {
+  const ownerId = requireUserId(userId);
+  const persisted = upsertBrowserPushSubscription(toPersistedSubscription(subscription, req, ownerId));
+  if (!persisted) {
+    throw new BrowserPushSubscriptionConflictError();
+  }
   log.info("Browser push subscription saved", {
     subscriptionId: persisted.id,
-    userId,
+    userId: ownerId,
     endpointOrigin: endpointOrigin(persisted.endpoint),
     userAgent: persisted.userAgent,
   });
   return { subscribed: true };
 }
 
-export function getBrowserPushSubscriptionStatus(endpoint: string, userId?: string): BrowserPushStatusResponse {
-  const subscription = getBrowserPushSubscriptionByEndpoint(endpoint, userId);
+export function getBrowserPushSubscriptionStatus(endpoint: string, userId: string): BrowserPushStatusResponse {
+  const ownerId = requireUserId(userId);
+  const subscription = getBrowserPushSubscriptionByEndpoint(endpoint, ownerId);
   log.trace("Browser push subscription status checked", {
     subscriptionId: subscription?.id,
-    userId,
+    userId: ownerId,
     endpointOrigin: endpointOrigin(endpoint),
     subscribed: Boolean(subscription && !subscription.disabledAt),
     disabled: Boolean(subscription?.disabledAt),
@@ -129,9 +142,10 @@ export function getBrowserPushSubscriptionStatus(endpoint: string, userId?: stri
   return { subscribed: Boolean(subscription && !subscription.disabledAt) };
 }
 
-export function unsubscribeBrowserPush(endpoint: string, userId?: string): BrowserPushStatusResponse {
-  const deleted = deleteBrowserPushSubscriptionByEndpoint(endpoint, userId);
-  log.info("Browser push subscription delete requested", { endpointOrigin: endpointOrigin(endpoint), userId, deleted });
+export function unsubscribeBrowserPush(endpoint: string, userId: string): BrowserPushStatusResponse {
+  const ownerId = requireUserId(userId);
+  const deleted = deleteBrowserPushSubscriptionByEndpoint(endpoint, ownerId);
+  log.info("Browser push subscription delete requested", { endpointOrigin: endpointOrigin(endpoint), userId: ownerId, deleted });
   return { subscribed: false };
 }
 
@@ -193,7 +207,7 @@ function toPushPayload(notification: NotificationListItem, unreadCount: number):
 async function sendOneBrowserPush(subscription: PersistedBrowserPushSubscription, payload: BrowserPushPayload): Promise<void> {
   try {
     await browserPushSender(toWebPushSubscription(subscription), JSON.stringify(payload), { TTL: PUSH_TTL_SECONDS });
-    markBrowserPushSubscriptionSucceeded(subscription.endpoint, nowIso());
+    markBrowserPushSubscriptionSucceeded(subscription.endpoint, subscription.userId, nowIso());
     log.info("Browser push delivery succeeded", {
       subscriptionId: subscription.id,
       endpointOrigin: endpointOrigin(subscription.endpoint),
@@ -213,7 +227,7 @@ async function sendOneBrowserPush(subscription: PersistedBrowserPushSubscription
     }
     const failedAt = new Date();
     const nextAttemptAt = nextFailureAttempt(subscription.failureCount, failedAt);
-    markBrowserPushSubscriptionFailed(subscription.endpoint, failedAt.toISOString(), nextAttemptAt);
+    markBrowserPushSubscriptionFailed(subscription.endpoint, subscription.userId, failedAt.toISOString(), nextAttemptAt);
     log.warn("Browser push delivery failed", {
       subscriptionId: subscription.id,
       endpointOrigin: endpointOrigin(subscription.endpoint),
@@ -227,8 +241,9 @@ async function sendOneBrowserPush(subscription: PersistedBrowserPushSubscription
   }
 }
 
-export async function sendBrowserPushNotification(notification: NotificationListItem, unreadCount: number, publicOrigin: string, userId?: string): Promise<void> {
-  const subscriptions = listActiveBrowserPushSubscriptions(Date.now(), nowIso(), userId);
+export async function sendBrowserPushNotification(notification: NotificationListItem, unreadCount: number, publicOrigin: string, userId: string): Promise<void> {
+  const ownerId = requireUserId(userId);
+  const subscriptions = listActiveBrowserPushSubscriptions(Date.now(), nowIso(), ownerId);
   if (subscriptions.length === 0) {
     log.trace("Browser push fanout skipped because no active subscriptions are available", { notificationId: notification.id });
     return;
@@ -240,7 +255,7 @@ export async function sendBrowserPushNotification(notification: NotificationList
   log.info("Browser push fanout started", {
     notificationId: notification.id,
     subscriptionCount: subscriptions.length,
-    userId,
+    userId: ownerId,
     publicOrigin,
     vapidSubject,
   });

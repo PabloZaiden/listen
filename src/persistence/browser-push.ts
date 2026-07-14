@@ -1,5 +1,6 @@
 import { getDatabase } from "./database";
 import { getPreference, setPreference } from "./preferences";
+import { requireUserId } from "@listen/shared";
 
 const VAPID_PUBLIC_KEY_PREFERENCE = "browserPush.vapidPublicKey";
 const VAPID_PRIVATE_KEY_PREFERENCE = "browserPush.vapidPrivateKey";
@@ -28,7 +29,7 @@ export interface PersistedBrowserPushSubscription {
 
 interface BrowserPushSubscriptionRow {
   id: string;
-  user_id: string | null;
+  user_id: string;
   endpoint: string;
   p256dh: string;
   auth: string;
@@ -46,7 +47,7 @@ interface BrowserPushSubscriptionRow {
 function mapSubscription(row: BrowserPushSubscriptionRow): PersistedBrowserPushSubscription {
   return {
     id: row.id,
-    userId: row.user_id ?? "",
+    userId: row.user_id,
     endpoint: row.endpoint,
     p256dh: row.p256dh,
     auth: row.auth,
@@ -73,14 +74,14 @@ export function setPersistedVapidKeys(keys: PersistedVapidKeys): void {
   setPreference(VAPID_PRIVATE_KEY_PREFERENCE, keys.privateKey);
 }
 
-export function getBrowserPushSubscriptionByEndpoint(endpoint: string, userId?: string): PersistedBrowserPushSubscription | undefined {
-  const row = userId
-    ? getDatabase().query("SELECT * FROM browser_push_subscriptions WHERE endpoint = $endpoint AND user_id = $userId").get({ endpoint, userId }) as BrowserPushSubscriptionRow | null
-    : getDatabase().query("SELECT * FROM browser_push_subscriptions WHERE endpoint = $endpoint").get({ endpoint }) as BrowserPushSubscriptionRow | null;
+export function getBrowserPushSubscriptionByEndpoint(endpoint: string, userId: string): PersistedBrowserPushSubscription | undefined {
+  const ownerId = requireUserId(userId);
+  const row = getDatabase().query("SELECT * FROM browser_push_subscriptions WHERE endpoint = $endpoint AND user_id = $userId").get({ endpoint, userId: ownerId }) as BrowserPushSubscriptionRow | null;
   return row ? mapSubscription(row) : undefined;
 }
 
-export function upsertBrowserPushSubscription(subscription: PersistedBrowserPushSubscription): PersistedBrowserPushSubscription {
+export function upsertBrowserPushSubscription(subscription: PersistedBrowserPushSubscription): PersistedBrowserPushSubscription | undefined {
+  const userId = requireUserId(subscription.userId);
   getDatabase().query(`
     INSERT INTO browser_push_subscriptions (
       id, user_id, endpoint, p256dh, auth, expiration_time, user_agent, created_at, updated_at,
@@ -100,9 +101,10 @@ export function upsertBrowserPushSubscription(subscription: PersistedBrowserPush
       failure_count = 0,
       next_attempt_at = NULL,
       disabled_at = NULL
+    WHERE browser_push_subscriptions.user_id = $userId
   `).run({
     id: subscription.id,
-    userId: subscription.userId,
+    userId,
     endpoint: subscription.endpoint,
     p256dh: subscription.p256dh,
     auth: subscription.auth,
@@ -116,22 +118,24 @@ export function upsertBrowserPushSubscription(subscription: PersistedBrowserPush
     nextAttemptAt: subscription.nextAttemptAt ?? null,
     disabledAt: subscription.disabledAt ?? null,
   });
-  return getBrowserPushSubscriptionByEndpoint(subscription.endpoint, subscription.userId) ?? subscription;
+  return getBrowserPushSubscriptionByEndpoint(subscription.endpoint, userId);
 }
 
-export function listActiveBrowserPushSubscriptions(nowMs: number, nowIso: string, userId?: string): PersistedBrowserPushSubscription[] {
+export function listActiveBrowserPushSubscriptions(nowMs: number, nowIso: string, userId: string): PersistedBrowserPushSubscription[] {
+  const ownerId = requireUserId(userId);
   const rows = getDatabase().query(`
     SELECT * FROM browser_push_subscriptions
     WHERE disabled_at IS NULL
-      AND ($userId IS NULL OR user_id = $userId)
+      AND user_id = $userId
       AND (expiration_time IS NULL OR expiration_time > $nowMs)
       AND (next_attempt_at IS NULL OR next_attempt_at <= $nowIso)
     ORDER BY created_at ASC, id ASC
-  `).all({ nowMs, nowIso, userId: userId ?? null }) as BrowserPushSubscriptionRow[];
+  `).all({ nowMs, nowIso, userId: ownerId }) as BrowserPushSubscriptionRow[];
   return rows.map(mapSubscription);
 }
 
-export function markBrowserPushSubscriptionSucceeded(endpoint: string, at: string): void {
+export function markBrowserPushSubscriptionSucceeded(endpoint: string, userId: string, at: string): void {
+  const ownerId = requireUserId(userId);
   getDatabase().query(`
     UPDATE browser_push_subscriptions
     SET
@@ -140,11 +144,12 @@ export function markBrowserPushSubscriptionSucceeded(endpoint: string, at: strin
       failure_count = 0,
       next_attempt_at = NULL,
       updated_at = $at
-    WHERE endpoint = $endpoint
-  `).run({ endpoint, at });
+    WHERE endpoint = $endpoint AND user_id = $userId
+  `).run({ endpoint, userId: ownerId, at });
 }
 
-export function markBrowserPushSubscriptionFailed(endpoint: string, at: string, nextAttemptAt: string): void {
+export function markBrowserPushSubscriptionFailed(endpoint: string, userId: string, at: string, nextAttemptAt: string): void {
+  const ownerId = requireUserId(userId);
   getDatabase().query(`
     UPDATE browser_push_subscriptions
     SET
@@ -152,11 +157,12 @@ export function markBrowserPushSubscriptionFailed(endpoint: string, at: string, 
       failure_count = failure_count + 1,
       next_attempt_at = $nextAttemptAt,
       updated_at = $at
-    WHERE endpoint = $endpoint
-  `).run({ endpoint, at, nextAttemptAt });
+    WHERE endpoint = $endpoint AND user_id = $userId
+  `).run({ endpoint, userId: ownerId, at, nextAttemptAt });
 }
 
-export function deleteBrowserPushSubscriptionByEndpoint(endpoint: string, userId?: string): boolean {
-  const result = getDatabase().query("DELETE FROM browser_push_subscriptions WHERE endpoint = $endpoint AND ($userId IS NULL OR user_id = $userId)").run({ endpoint, userId: userId ?? null });
+export function deleteBrowserPushSubscriptionByEndpoint(endpoint: string, userId: string): boolean {
+  const ownerId = requireUserId(userId);
+  const result = getDatabase().query("DELETE FROM browser_push_subscriptions WHERE endpoint = $endpoint AND user_id = $userId").run({ endpoint, userId: ownerId });
   return result.changes > 0;
 }
