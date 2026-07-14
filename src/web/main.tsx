@@ -574,7 +574,11 @@ function InboxView({
         await appJson(`/api/notifications/${encodeURIComponent(notification.id)}`, { method: "DELETE" });
         removeNotification(notification.id);
         setOpenRowId(undefined);
-        await refreshNotifications();
+        try {
+          await refreshNotifications();
+        } catch (refreshError) {
+          toast.error(mutationErrorMessage(refreshError, "Notification deleted, but could not refresh notifications."));
+        }
       },
     });
   }
