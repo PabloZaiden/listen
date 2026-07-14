@@ -7,7 +7,7 @@ import listenIcon192Path from "./web/icons/listen-192.png" with { type: "file" }
 import listenIcon512Path from "./web/icons/listen-512.png" with { type: "file" };
 import appleTouchIconPath from "./web/icons/apple-touch-icon.png" with { type: "file" };
 import { createWebAppServer, defineRoutes, errorResponse, getRequestBaseUrl, getRequestOriginInfo, jsonResponse, notFound, parseJson, readRuntimeConfig, sqliteWebAppStore, successResponse, type ResourceRealtimeEvent, type RuntimeConfig, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
-import { browserPushEndpointRequestSchema, browserPushSubscribeRequestSchema, createSourceRequestSchema, type WebhookNotificationRequest, webhookNotificationRequestSchema } from "@listen/contracts";
+import { browserPushEndpointRequestSchema, browserPushSubscribeRequestSchema, createSourceRequestSchema, listNotificationsQuerySchema, type WebhookNotificationRequest, webhookNotificationRequestSchema } from "@listen/contracts";
 import { createLogger, setLogLevel } from "./core/logger";
 import { verifyWebhookToken } from "./core/webhook-tokens";
 import { createNotificationFromWebhook, deleteNotification, deleteNotifications, listNotifications, markNotificationRead, markNotificationUnread, markNotificationsRead, openNotification } from "./core/notifications";
@@ -16,7 +16,7 @@ import { getBrowserPushConfig, getBrowserPushSubscriptionStatus, subscribeBrowse
 import { initializeDatabase } from "./persistence/database";
 import { LISTEN_VERSION } from "./version";
 import { checkGlobalWebhookRateLimit, checkSourceWebhookRateLimit, type WebhookRateLimitDecision } from "./core/webhook-rate-limit";
-import { parseWebhookNotification, RequestBodyLimitError } from "./api/validation";
+import { parseQuery, parseWebhookNotification, RequestBodyLimitError } from "./api/validation";
 
 type ListenRealtimeEvent = ResourceRealtimeEvent;
 
@@ -39,16 +39,6 @@ function rateLimitedResponse(decision: Extract<WebhookRateLimitDecision, { allow
   return errorResponse(429, "rate_limited", "Too many webhook requests", undefined, {
     headers: { "retry-after": String(decision.retryAfterSeconds) },
   });
-}
-
-function parseLimit(raw: string | null, fallback: number): number {
-  const value = raw ? Number(raw) : fallback;
-  return Number.isInteger(value) && value > 0 && value <= 100 ? value : fallback;
-}
-
-function parseOffset(raw: string | null): number {
-  const value = raw ? Number(raw) : 0;
-  return Number.isInteger(value) && value >= 0 ? value : 0;
 }
 
 function createRoutes(runtimeConfig: RuntimeConfig) {
@@ -90,24 +80,24 @@ function createRoutes(runtimeConfig: RuntimeConfig) {
   },
   "/api/notifications": {
     auth: "user",
+    querySchema: listNotificationsQuerySchema,
     GET: (req, ctx) => {
       const user = ctx.requireUser();
-      const url = new URL(req.url);
+      const query = parseQuery(req, listNotificationsQuerySchema);
+      if (query instanceof Response) return query;
       return jsonResponse(listNotifications({
         userId: user.id,
-        limit: parseLimit(url.searchParams.get("limit"), 50),
-        offset: parseOffset(url.searchParams.get("offset")),
-        sourceId: url.searchParams.get("sourceId") || undefined,
-        opened: url.searchParams.get("opened") === "true" ? true : url.searchParams.get("opened") === "false" ? false : undefined,
+        ...query,
       }));
     },
     DELETE: (req, ctx) => {
       const user = ctx.requireUser();
-      const url = new URL(req.url);
+      const query = parseQuery(req, listNotificationsQuerySchema);
+      if (query instanceof Response) return query;
       const deletedCount = deleteNotifications({
         userId: user.id,
-        sourceId: url.searchParams.get("sourceId") || undefined,
-        opened: url.searchParams.get("opened") === "true" ? true : url.searchParams.get("opened") === "false" ? false : undefined,
+        sourceId: query.sourceId,
+        opened: query.opened,
       });
       ctx.userRealtime.publishChanged("notifications");
       return jsonResponse({ deletedCount });

@@ -1,7 +1,7 @@
 import "./../setup";
 import { describe, expect, test } from "bun:test";
 import type { RuntimeConfig } from "@pablozaiden/webapp/server";
-import { BROWSER_PUSH_ENDPOINT_MAX_CHARS, LIST_NOTIFICATIONS_DEFAULT_LIMIT, WEBHOOK_JSON_BODY_MAX_BYTES } from "@listen/shared";
+import { BROWSER_PUSH_ENDPOINT_MAX_CHARS, LIST_NOTIFICATIONS_DEFAULT_LIMIT, LIST_NOTIFICATIONS_MAX_LIMIT, WEBHOOK_JSON_BODY_MAX_BYTES } from "@listen/shared";
 import { createFetchHandler } from "../../src/server";
 import { setBrowserPushSenderForTests } from "../../src/core/browser-push";
 import { createLogger, getLogLevel } from "../../src/core/logger";
@@ -270,6 +270,75 @@ describe("API", () => {
     const list = await json<{ notifications: Array<{ id: string; source: string; markdownContent?: string }> }>(listResponse);
     expect(list.notifications[0]?.source).toBe("Agent");
     expect(list.notifications[0]?.markdownContent).toBeUndefined();
+  });
+
+  test("notification query parameters validate the shared schema for listing and bulk deletion", async () => {
+    const defaultPage = await json<{ pagination: { limit: number; offset: number } }>(
+      await request("/api/notifications"),
+    );
+    expect(defaultPage.pagination).toMatchObject({
+      limit: LIST_NOTIFICATIONS_DEFAULT_LIMIT,
+      offset: 0,
+    });
+
+    const invalidQueries = [
+      "limit=0",
+      "limit=-1",
+      `limit=${LIST_NOTIFICATIONS_MAX_LIMIT + 1}`,
+      "limit=1.5",
+      "limit=not-a-number",
+      "offset=-1",
+      "offset=1.5",
+      "offset=not-a-number",
+      "opened=maybe",
+    ];
+    for (const query of invalidQueries) {
+      const response = await request(`/api/notifications?${query}`);
+      expect(response.status).toBe(400);
+      expect(await json<{ error: string }>(response)).toMatchObject({ error: "invalid_request_query" });
+    }
+
+    const created = await createSource();
+    const firstWebhook = await webhook(created.webhookUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "First", shortDescription: "A", markdownContent: "A" }),
+    });
+    const secondWebhook = await webhook(created.webhookUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "Second", shortDescription: "B", markdownContent: "B" }),
+    });
+    expect(firstWebhook.status).toBe(201);
+    expect(secondWebhook.status).toBe(201);
+    const firstNotification = await json<{ id: string }>(firstWebhook);
+    await request(`/api/notifications/${firstNotification.id}`);
+
+    const opened = await json<{ notifications: unknown[]; pagination: { limit: number; offset: number; total: number } }>(
+      await request(`/api/notifications?sourceId=${created.source.id}&limit=1&offset=0&opened=true`),
+    );
+    expect(opened.notifications).toHaveLength(1);
+    expect(opened.pagination).toEqual({ limit: 1, offset: 0, total: 1 });
+
+    const unread = await json<{ notifications: unknown[] }>(
+      await request(`/api/notifications?sourceId=${created.source.id}&opened=false`),
+    );
+    expect(unread.notifications).toHaveLength(1);
+
+    for (const query of ["opened=maybe", `limit=${LIST_NOTIFICATIONS_MAX_LIMIT + 1}`, "offset=-1"]) {
+      const response = await request(`/api/notifications?${query}`, { method: "DELETE" });
+      expect(response.status).toBe(400);
+      expect(await json<{ error: string }>(response)).toMatchObject({ error: "invalid_request_query" });
+    }
+
+    const deleted = await json<{ deletedCount: number }>(
+      await request(`/api/notifications?sourceId=${created.source.id}&opened=true`, { method: "DELETE" }),
+    );
+    expect(deleted.deletedCount).toBe(1);
+    const remaining = await json<{ notifications: unknown[] }>(
+      await request(`/api/notifications?sourceId=${created.source.id}`),
+    );
+    expect(remaining.notifications).toHaveLength(1);
   });
 
   test("notification pagination exposes complete global and source-filtered pages", async () => {

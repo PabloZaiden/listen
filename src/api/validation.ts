@@ -1,6 +1,7 @@
 import { parseJson, errorResponse } from "@pablozaiden/webapp/server";
 import { webhookNotificationRequestSchema, type WebhookNotificationRequest } from "@listen/contracts";
 import { WEBHOOK_JSON_BODY_MAX_BYTES } from "@listen/shared";
+import { z } from "zod";
 import { createLogger, errorLogFields } from "../core/logger";
 
 const log = createLogger("api:validation");
@@ -13,6 +14,23 @@ export class RequestBodyLimitError extends Error {
     super(message);
     this.name = "RequestBodyLimitError";
   }
+}
+
+export function parseQuery<TSchema extends z.ZodTypeAny>(req: Request, schema: TSchema): z.infer<TSchema> | Response {
+  const result = schema.safeParse(Object.fromEntries(new URL(req.url).searchParams.entries()));
+  if (result.success) {
+    return result.data;
+  }
+  return errorResponse(
+    400,
+    "invalid_request_query",
+    "Query parameters failed validation",
+    result.error.issues.map((issue) => ({
+      path: issue.path.map((segment) => typeof segment === "symbol" ? String(segment) : segment),
+      code: issue.code,
+      message: issue.message,
+    })),
+  );
 }
 
 function requestBodyTooLargeError(): RequestBodyLimitError {
