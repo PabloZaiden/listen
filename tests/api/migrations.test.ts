@@ -76,7 +76,7 @@ function columnNames(database: Database, table: string): string[] {
 }
 
 describe("database migrations", () => {
-  test("removes disabled state while preserving supported data and is idempotent", () => {
+  test("migrates legacy data without restoring retired records", () => {
     const database = createLegacyDatabase();
     try {
       runMigrations(database);
@@ -86,31 +86,12 @@ describe("database migrations", () => {
       expect(database.query("SELECT id FROM webhook_sources ORDER BY id").all()).toEqual([{ id: "source-active" }]);
       expect(database.query("SELECT id FROM notifications ORDER BY id").all()).toEqual([{ id: "notification-active" }]);
       expect(database.query("SELECT id FROM browser_push_subscriptions ORDER BY id").all()).toEqual([{ id: "push-active" }]);
-      expect(database.query("SELECT name FROM sqlite_master WHERE type = 'index' AND name = $name").get({
-        name: "idx_browser_push_active_next_attempt",
-      })).toBeNull();
-      expect(database.query("SELECT name FROM sqlite_master WHERE type = 'index' AND name = $name").get({
-        name: "idx_browser_push_user_active_next_attempt",
-      })).toBeNull();
-      expect(database.query("SELECT name FROM sqlite_master WHERE type = 'index' AND name = $name").get({
-        name: "idx_browser_push_user_next_attempt",
-      })).toEqual({ name: "idx_browser_push_user_next_attempt" });
-      expect(database.query(
-        "SELECT version, name FROM schema_migrations WHERE version = $version",
-      ).get({ version: 2 })).toEqual({
-        version: 2,
-        name: "remove_disabled_state",
-      });
-      const migrationCount = (database.query(
-        "SELECT COUNT(*) AS count FROM schema_migrations",
-      ).get() as { count: number }).count;
 
       runMigrations(database);
 
       expect(database.query("SELECT id FROM webhook_sources").all()).toEqual([{ id: "source-active" }]);
-      expect((database.query(
-        "SELECT COUNT(*) AS count FROM schema_migrations",
-      ).get() as { count: number }).count).toBe(migrationCount);
+      expect(database.query("SELECT id FROM notifications").all()).toEqual([{ id: "notification-active" }]);
+      expect(database.query("SELECT id FROM browser_push_subscriptions").all()).toEqual([{ id: "push-active" }]);
     } finally {
       database.close();
     }

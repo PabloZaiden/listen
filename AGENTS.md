@@ -94,6 +94,15 @@ Use `bun test` through repository scripts. Prefer API/integration tests over bri
 Refactors must not add tests that merely assert component, file, or module structure.
 Test externally required atomic behavior rather than duplicating direct schema
 operations in application-level tests.
+Tests must focus on behavior, public contracts, security boundaries, and
+meaningful integration seams. Do not duplicate framework-owned endpoint tests in
+Listen beyond the minimum application route-wiring check.
+Do not test exact UI copy, CSS classes, DOM structure, logger messages or
+levels, removed behavior, absent legacy schema, or private SQL choices.
+Prefer one broad state-transition or integration scenario over many
+micro-regression tests for constants and historical fixes. If an
+implementation-level test is retained, document the concrete contract or
+security invariant it protects.
 
 ## Database Migrations
 
