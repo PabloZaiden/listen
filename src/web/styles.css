@@ -190,13 +190,23 @@ a,
 .listen-swipe-row {
   position: relative;
   overflow: hidden;
-  border-radius: var(--listen-notification-radius);
+  border-radius: 0;
   background: color-mix(in srgb, var(--wapp-muted), transparent 92%);
   touch-action: pan-y;
 }
 
+.listen-swipe-row:first-child {
+  border-top-left-radius: var(--listen-notification-radius);
+  border-top-right-radius: var(--listen-notification-radius);
+}
+
+.listen-swipe-row:last-child {
+  border-bottom-right-radius: var(--listen-notification-radius);
+  border-bottom-left-radius: var(--listen-notification-radius);
+}
+
 .listen-swipe-row + .listen-swipe-row {
-  border-top: 1px solid var(--wapp-border-soft);
+  border-top: 0;
 }
 
 .listen-swipe-row.is-open .wapp-data-list-row-actions {
@@ -258,8 +268,10 @@ a,
   transition: none;
 }
 
-.listen-swipe-content .wapp-data-list-row {
+.listen-swipe-row .listen-swipe-content .wapp-data-list-row {
   min-width: 100%;
+  border: 0;
+  border-radius: 0;
   background: var(--wapp-surface);
 }
 
