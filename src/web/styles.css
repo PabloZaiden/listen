@@ -1,5 +1,6 @@
 :root {
   --listen-unread: #3b82f6;
+  --listen-notification-radius: 1rem;
 }
 
 html,
@@ -189,6 +190,7 @@ a,
 .listen-swipe-row {
   position: relative;
   overflow: hidden;
+  border-radius: var(--listen-notification-radius);
   background: color-mix(in srgb, var(--wapp-muted), transparent 92%);
   touch-action: pan-y;
 }
