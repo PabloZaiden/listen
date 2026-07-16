@@ -18,7 +18,6 @@ import { SERVICE_WORKER_ASSET } from "./web/service-worker-asset";
 
 type ListenRealtimeEvent = ResourceRealtimeEvent;
 
-const log = createLogger("server");
 const webhookLog = createLogger("api:webhooks");
 
 function rateLimitedResponse(decision: Extract<WebhookRateLimitDecision, { allowed: false }>): Response {
@@ -304,6 +303,5 @@ export function createFetchHandler(
 
 export async function startServer(): Promise<Server<WebAppWebSocketData>> {
   const server = await getWebAppServer().start();
-  log.info(`Listen server started on ${server.hostname}:${server.port}`);
   return server;
 }

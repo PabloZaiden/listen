@@ -25,6 +25,12 @@ LISTEN_HOST=0.0.0.0 LISTEN_PORT=3000 listen serve
 
 Native runs default to `localhost:3000`. Docker uses `0.0.0.0:8080` and stores data in `/app/data`.
 
+Successful server-start lifecycle messages are owned by the Webapp framework,
+which reports the bound server URL. Listen does not duplicate that event;
+application logs are reserved for distinct, safe diagnostics. Never log
+webhook tokens, complete webhook URLs, authentication material, or other
+credentials.
+
 ## Browser notifications
 
 The Settings view includes per-browser Web Push subscriptions. Click "Enable on this browser" to allow Listen to send system notifications to the current browser profile. Repeat this on each desktop or mobile browser where you want notifications. If the browser is already subscribed, Settings shows an unsubscribe action for only that browser.
