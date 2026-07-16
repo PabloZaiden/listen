@@ -31,6 +31,14 @@ application logs are reserved for distinct, safe diagnostics. Never log
 webhook tokens, complete webhook URLs, authentication material, or other
 credentials.
 
+## CLI command routing
+
+Listen uses Webapp's CLI dispatcher and result printer for finite commands:
+`version`, `config`, `notify`, and `update`. The `serve` command is handled
+separately because it owns the long-running server lifecycle. `config` remains
+a Listen-owned namespace for webhook configuration and must not be replaced by
+a framework command with the same name.
+
 ## Browser notifications
 
 The Settings view includes per-browser Web Push subscriptions. Click "Enable on this browser" to allow Listen to send system notifications to the current browser profile. Repeat this on each desktop or mobile browser where you want notifications. If the browser is already subscribed, Settings shows an unsubscribe action for only that browser.
