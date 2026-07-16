@@ -1,7 +1,7 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { chmodSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { CliCommandResult } from "./runtime";
+import type { CliCommandResult } from "@pablozaiden/webapp/cli";
 
 export interface ListenCliConfig {
   webhookUrl: string;

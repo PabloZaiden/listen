@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { decodePngDataUrl, hasPngSignature, webhookNotificationRequestSchema } from "@listen/contracts";
+import { readOption, type CliCommandResult } from "@pablozaiden/webapp/cli";
 import { configuredWebhookUrl } from "./config";
-import { readOption, type CliCommandResult } from "./runtime";
 
 async function readMarkdown(args: string[]): Promise<string | undefined> {
   const inline = readOption(args, ["--markdown"]);

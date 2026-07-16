@@ -69,6 +69,33 @@ describe("CLI", () => {
   });
 
   test("dispatches notify arguments after the command name", async () => {
+    const receivedBodies: unknown[] = [];
+    using server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        receivedBodies.push(await req.json());
+        return Response.json({ id: "notification-id" }, { status: 201 });
+      },
+    });
+    process.env["LISTEN_WEBHOOK_URL"] = `http://127.0.0.1:${server.port}/webhook`;
+    const log = spyOn(console, "log").mockImplementation(() => {});
+    try {
+      expect(await runMain(["notify", "--title", "A", "--description", "B", "--markdown", "C"])).toBe(0);
+      expect(await runMain(["notify", "--title=A", "--short-description=B", "--markdown=C"])).toBe(0);
+
+      expect(receivedBodies).toEqual([
+        { title: "A", shortDescription: "B", markdownContent: "C" },
+        { title: "A", shortDescription: "B", markdownContent: "C" },
+      ]);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  test("notify supports markdown-file and rejects multiple markdown sources", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "listen-markdown-"));
+    const markdownPath = join(tempDir, "message.md");
+    writeFileSync(markdownPath, "Markdown from a file");
     let receivedBody: unknown;
     using server = Bun.serve({
       port: 0,
@@ -78,13 +105,53 @@ describe("CLI", () => {
       },
     });
     process.env["LISTEN_WEBHOOK_URL"] = `http://127.0.0.1:${server.port}/webhook`;
+    try {
+      const valid = await runNotifyCommand([
+        "--title=A",
+        "--short-description=B",
+        `--markdown-file=${markdownPath}`,
+      ]);
+      expect(valid.exitCode).toBe(0);
+      expect(receivedBody).toEqual({
+        title: "A",
+        shortDescription: "B",
+        markdownContent: "Markdown from a file",
+      });
+
+      const invalid = await runNotifyCommand([
+        "--title",
+        "A",
+        "--description",
+        "B",
+        "--markdown=C",
+        `--markdown-file=${markdownPath}`,
+      ]);
+      expect(invalid.exitCode).toBe(1);
+      expect(invalid.error).toContain("Require exactly one");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("update forwards check and version options through the public command", async () => {
+    const fetch = spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({
+        tag_name: "v1.2.3",
+        assets: [
+          { name: "listen-v1.2.3-linux-x64", browser_download_url: "https://example.com/listen-linux-x64" },
+          { name: "listen-v1.2.3-linux-arm64", browser_download_url: "https://example.com/listen-linux-arm64" },
+          { name: "listen-v1.2.3-darwin-x64", browser_download_url: "https://example.com/listen-darwin-x64" },
+          { name: "listen-v1.2.3-darwin-arm64", browser_download_url: "https://example.com/listen-darwin-arm64" },
+        ],
+      }),
+    );
     const log = spyOn(console, "log").mockImplementation(() => {});
     try {
-      const result = await runMain(["notify", "--title", "A", "--description", "B", "--markdown", "C"]);
-
-      expect(result).toBe(0);
-      expect(receivedBody).toEqual({ title: "A", shortDescription: "B", markdownContent: "C" });
+      expect(await runMain(["update", "--check", "--version=1.2.3"])).toBe(0);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(fetch.mock.calls[0]?.[0]).toBe("https://api.github.com/repos/pablozaiden/listen/releases/tags/v1.2.3");
     } finally {
+      fetch.mockRestore();
       log.mockRestore();
     }
   });
@@ -143,6 +210,21 @@ describe("CLI", () => {
     const result = await runNotifyCommand(["--title", "A", "--description", "B", "--markdown", "C"]);
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain("notification-id");
+  });
+
+  test("notify request failures do not echo webhook credentials", async () => {
+    const token = "secret-token";
+    using server = Bun.serve({
+      port: 0,
+      fetch: () => new Response("request rejected", { status: 500 }),
+    });
+    process.env["LISTEN_WEBHOOK_URL"] = `http://127.0.0.1:${server.port}/api/webhooks/source/${token}`;
+
+    const result = await runNotifyCommand(["--title", "A", "--description", "B", "--markdown", "C"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toContain("status 500");
+    expect(result.error).not.toContain(token);
   });
 
   test("inline notify converts escaped newlines before delivery", async () => {

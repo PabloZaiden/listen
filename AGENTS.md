@@ -24,6 +24,7 @@ Public endpoint rate limits must isolate independent callers and tenants; attack
 ## TypeScript
 
 Keep strict types. Prefer shared contracts from `packages/contracts`, shared limits from `packages/shared`, and framework helpers from `@pablozaiden/webapp`. Use bracket notation for environment variables. All source code must be TypeScript; do not add JavaScript source files. Bun serves and executes TypeScript directly, including browser-facing entrypoints such as service workers.
+Use `@pablozaiden/webapp/cli` for generic CLI argument and flag lookup, result types, and result formatting; keep Listen-specific command validation and business behavior in Listen-owned modules.
 Do not mutate returned framework configuration or internal objects to simulate constructor options. When a required framework extension point is missing, add it upstream and consume the released API rather than depending on object identity or initialization order. Test-only option types must describe exactly the overrides the helper supports.
 Use the supported Webapp request-body parsers and public-asset APIs instead of
 reconstructing `Request` objects, importing TypeScript as raw text, concatenating
