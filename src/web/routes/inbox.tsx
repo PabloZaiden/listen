@@ -26,7 +26,6 @@ function notificationReadMutationKey(notificationId: string): string {
 
 export type InboxViewProps = {
   route: WebAppRoute;
-  refreshSources: () => Promise<void>;
   requestConfirm: (confirm: ConfirmState) => void;
   notificationRefreshRequest: {
     token: number;
@@ -37,7 +36,6 @@ export type InboxViewProps = {
 
 export function InboxView({
   route,
-  refreshSources,
   requestConfirm,
   notificationRefreshRequest,
   notificationActions,
@@ -60,17 +58,12 @@ export function InboxView({
   const [openRowId, setOpenRowId] = useState<string>();
 
   useRealtimeRefresh({
-    resources: ["notifications", "sources"],
+    resources: ["notifications"],
     refresh: async () => {
-      const [sourcesResult, notificationsResult] = await Promise.allSettled([
-        refreshSources(),
-        refreshNotifications(),
-      ]);
-      if (sourcesResult.status === "rejected") {
-        toast.error(mutationErrorMessage(sourcesResult.reason, "Could not refresh sources."));
-      }
-      if (notificationsResult.status === "rejected") {
-        toast.error(mutationErrorMessage(notificationsResult.reason, "Could not refresh notifications."));
+      try {
+        await refreshNotifications();
+      } catch (notificationError) {
+        toast.error(mutationErrorMessage(notificationError, "Could not refresh notifications."));
       }
     },
   });
