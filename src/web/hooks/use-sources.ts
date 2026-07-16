@@ -59,6 +59,10 @@ export function useSources(): SourcesController {
     return true;
   }, [ownsRequest]);
 
+  const abortActiveRequest = useCallback((): void => {
+    activeRequestRef.current?.controller.abort();
+  }, []);
+
   const refresh = useCallback(async (signal?: AbortSignal): Promise<void> => {
     setLoading(true);
     const request = beginRequest(signal);
@@ -89,6 +93,7 @@ export function useSources(): SourcesController {
   });
 
   const createSource = useCallback(async (name: string): Promise<SourceMutationResponse> => {
+    abortActiveRequest();
     const response = await appJson<SourceMutationResponse>("/api/sources", {
       method: "POST",
       body: JSON.stringify({ name }),
@@ -96,20 +101,22 @@ export function useSources(): SourcesController {
     setSources((current) => reconcileCreatedSource(current, response.source));
     setError(undefined);
     return response;
-  }, []);
+  }, [abortActiveRequest]);
 
   const rotateSourceToken = useCallback(async (sourceId: string): Promise<SourceMutationResponse> => {
+    abortActiveRequest();
     const response = await appJson<SourceMutationResponse>(`/api/sources/${encodeURIComponent(sourceId)}/token/rotate`, { method: "POST" });
     setSources((current) => reconcileRotatedSource(current, response.source));
     setError(undefined);
     return response;
-  }, []);
+  }, [abortActiveRequest]);
 
   const deleteSource = useCallback(async (sourceId: string): Promise<void> => {
+    abortActiveRequest();
     await appJson(`/api/sources/${encodeURIComponent(sourceId)}`, { method: "DELETE" });
     setSources((current) => reconcileDeletedSource(current, sourceId));
     setError(undefined);
-  }, []);
+  }, [abortActiveRequest]);
 
   useEffect(() => {
     const controller = new AbortController();
