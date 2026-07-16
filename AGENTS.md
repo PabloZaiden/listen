@@ -123,6 +123,13 @@ Do not use `INSERT OR REPLACE`. Do not interpolate untrusted values into SQL. Us
 
 Use Route -> Core -> Persistence imports. Use shared zod schemas for validation. Use `@pablozaiden/installer` for update behavior. Use the framework shell/settings/title-bar action menu/realtime/auth primitives instead of rebuilding them in Listen. Browser entrypoints should compose focused route modules, domain hooks, and interaction components instead of implementing those concerns inline. Route components rendered by `WebAppRoot.routes` must use `Page` as the top-level wrapper, and app code must not render directly into `.wapp-main-content` or duplicate the fixed framework title with an app-local heading. Define actions owned by a route-backed sidebar node once on that node so the framework can reuse them for sidebar context menus and the active title-bar menu; use `WebAppRoot.header.getActions` only for routes without an owning sidebar node or genuinely additional route actions. Framework dialogs handle Enter/Escape, destructive/delete actions are red and last, sidebar badges are compact status dots, and header action buttons must stay visible while titles/subtitles truncate. When in doubt, inspect `github.com/pablozaiden/clanky` and follow the closest pattern unless a current Listen requirement differs.
 
+Webapp owns document/root viewport sizing, shell overflow, safe-area spacing,
+and dynamic viewport tokens such as `--wapp-viewport-height`. Listen CSS must
+not redefine global `html`, `body`, or `#root` sizing/overflow or duplicate
+`100vh`/`100dvh` shell behavior. Keep product-specific layout rules scoped to
+the owning Listen component, and use the framework shell and `Page` layouts
+for viewport-sized content.
+
 ## Pagination and Realtime Collections
 
 - When an API returns pagination metadata, every consuming UI must either expose the complete paginated dataset or document an intentional product limit.
