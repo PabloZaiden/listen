@@ -4,16 +4,6 @@ export interface CliCommandResult {
   error?: string;
 }
 
-export function printResult(result: CliCommandResult): number {
-  if (result.output) {
-    console.log(result.output);
-  }
-  if (result.error) {
-    console.error(result.error);
-  }
-  return result.exitCode;
-}
-
 export function readOption(args: string[], names: string[]): string | undefined {
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];

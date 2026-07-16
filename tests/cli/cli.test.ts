@@ -38,6 +38,57 @@ describe("CLI", () => {
     }
   });
 
+  test("help aliases and missing commands use the framework dispatcher", async () => {
+    const log = spyOn(console, "log").mockImplementation(() => {});
+    try {
+      expect(await runMain([])).toBe(1);
+      expect(await runMain(["help"])).toBe(0);
+      expect(await runMain(["-h"])).toBe(0);
+      expect(await runMain(["--help"])).toBe(0);
+
+      expect(log).toHaveBeenCalledTimes(4);
+      for (const [output] of log.mock.calls) {
+        expect(output).toContain("Usage:");
+      }
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  test("unknown commands return an error and help", async () => {
+    const log = spyOn(console, "log").mockImplementation(() => {});
+    const error = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(await runMain(["unknown-command"])).toBe(1);
+      expect(error).toHaveBeenCalledWith("Unknown command: unknown-command");
+      expect(log).toHaveBeenCalledWith(expect.stringContaining("Usage:"));
+    } finally {
+      log.mockRestore();
+      error.mockRestore();
+    }
+  });
+
+  test("dispatches notify arguments after the command name", async () => {
+    let receivedBody: unknown;
+    using server = Bun.serve({
+      port: 0,
+      fetch: async (req) => {
+        receivedBody = await req.json();
+        return Response.json({ id: "notification-id" }, { status: 201 });
+      },
+    });
+    process.env["LISTEN_WEBHOOK_URL"] = `http://127.0.0.1:${server.port}/webhook`;
+    const log = spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const result = await runMain(["notify", "--title", "A", "--description", "B", "--markdown", "C"]);
+
+      expect(result).toBe(0);
+      expect(receivedBody).toEqual({ title: "A", shortDescription: "B", markdownContent: "C" });
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   test("read config prefers listen.config.json beside the binary", async () => {
     const binaryDir = mkdtempSync(join(tmpdir(), "listen-binary-"));
     const binaryConfigPath = join(binaryDir, "listen.config.json");
