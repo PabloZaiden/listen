@@ -292,6 +292,8 @@ describe("API", () => {
     const list = await json<{ notifications: Array<{ id: string; source: string; markdownContent?: string }> }>(listResponse);
     expect(list.notifications[0]?.source).toBe("Agent");
     expect(list.notifications[0]?.markdownContent).toBeUndefined();
+    const sources = await json<{ sources: Array<{ id: string; lastUsedAt?: string }> }>(await request("/api/sources"));
+    expect(sources.sources.find((source) => source.id === created.source.id)?.lastUsedAt).toBeTruthy();
   });
 
   test("notification query parameters validate the shared schema for listing and bulk deletion", async () => {
@@ -1173,6 +1175,8 @@ describe("API", () => {
 
     const sourcesAfterCrossUserMutations = await json<{ sources: Array<{ id: string }> }>(await requestAs(userA, "/api/sources"));
     expect(sourcesAfterCrossUserMutations.sources.map((source) => source.id)).toEqual([sourceA.source.id]);
+    const sourceBForUserB = await json<{ sources: Array<{ id: string; lastUsedAt?: string }> }>(await requestAs(userB, "/api/sources"));
+    expect(sourceBForUserB.sources.find((source) => source.id === sourceB.source.id)?.lastUsedAt).toBeUndefined();
     const notificationsAfterCrossUserMutations = await json<{ pagination: { total: number } }>(
       await requestAs(userA, "/api/notifications"),
     );

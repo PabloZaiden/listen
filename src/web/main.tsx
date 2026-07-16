@@ -31,7 +31,15 @@ function navigateTo(route: WebAppRoute): void {
 
 function ListenApp(): React.ReactElement {
   const toast = useToast();
-  const { sources, refresh: refreshSources, createSource, rotateSourceToken, deleteSource: deleteSourceRequest } = useSources();
+  const {
+    sources,
+    loading: sourcesLoading,
+    error: sourcesError,
+    refresh: refreshSources,
+    createSource,
+    rotateSourceToken,
+    deleteSource: deleteSourceRequest,
+  } = useSources();
   const notificationActions = useNotificationActions();
   const { confirmState, confirmBusy, requestConfirm, closeConfirm, runConfirm } = useConfirmation();
   const [notificationRefreshRequest, setNotificationRefreshRequest] = useState({
@@ -148,7 +156,6 @@ function ListenApp(): React.ReactElement {
     inbox: (route: WebAppRoute) => (
       <InboxView
         route={route}
-        refreshSources={refreshSources}
         requestConfirm={requestConfirm}
         notificationRefreshRequest={notificationRefreshRequest}
         notificationActions={notificationActions}
@@ -158,6 +165,8 @@ function ListenApp(): React.ReactElement {
     sources: () => (
       <SourcesView
         sources={sources}
+        loading={sourcesLoading}
+        error={sourcesError}
         refreshSources={refreshSources}
         createSource={createSource}
         rotateSourceToken={rotateSourceToken}
@@ -165,7 +174,7 @@ function ListenApp(): React.ReactElement {
         requestConfirm={requestConfirm}
       />
     ),
-  }), [createSource, deleteSourceRequest, notificationActions, notificationRefreshRequest, refreshSources, requestConfirm, rotateSourceToken, sources]);
+  }), [createSource, deleteSourceRequest, notificationActions, notificationRefreshRequest, refreshSources, requestConfirm, rotateSourceToken, sources, sourcesError, sourcesLoading]);
 
   return (
     <>

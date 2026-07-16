@@ -6,6 +6,8 @@ import {
   Button,
   DataList,
   DataListRow,
+  ErrorState,
+  LoadingState,
   Page,
   Panel,
   TextField,
@@ -18,6 +20,8 @@ import { mutationErrorMessage } from "../mutation-state";
 
 export type SourcesViewProps = {
   sources: SourceResponse[];
+  loading: boolean;
+  error?: Error;
   refreshSources: () => Promise<void>;
   createSource: SourcesController["createSource"];
   rotateSourceToken: SourcesController["rotateSourceToken"];
@@ -27,6 +31,8 @@ export type SourcesViewProps = {
 
 export function SourcesView({
   sources,
+  loading,
+  error: sourceLoadError,
   refreshSources,
   createSource,
   rotateSourceToken,
@@ -64,11 +70,6 @@ export function SourcesView({
       const response = await createSource(trimmed);
       setWebhookUrl(response.webhookUrl);
       setName("");
-      try {
-        await refreshSources();
-      } catch (refreshError) {
-        toast.error(mutationErrorMessage(refreshError, "Source created, but the source list could not be refreshed."));
-      }
       toast.success("Source created. The webhook URL is shown below.");
     } catch (requestError) {
       const message = mutationErrorMessage(requestError, "Could not create source.");
@@ -89,11 +90,6 @@ export function SourcesView({
       action: async () => {
         const response = await rotateSourceToken(source.id);
         setWebhookUrl(response.webhookUrl);
-        try {
-          await refreshSources();
-        } catch (refreshError) {
-          toast.error(mutationErrorMessage(refreshError, "Source token rotated, but the source list could not be refreshed."));
-        }
       },
     });
   }
@@ -107,17 +103,30 @@ export function SourcesView({
       successMessage: "Source deleted.",
       action: async () => {
         await deleteSourceRequest(source.id);
-        try {
-          await refreshSources();
-        } catch (refreshError) {
-          toast.error(mutationErrorMessage(refreshError, "Source deleted, but the source list could not be refreshed."));
-        }
       },
+    });
+  }
+
+  function retrySourceRefresh(): void {
+    void refreshSources().catch((refreshError) => {
+      toast.error(mutationErrorMessage(refreshError, "Could not refresh sources."));
     });
   }
 
   return (
     <Page className="listen-stack">
+      {loading && sources.length === 0 ? (
+        <Panel><LoadingState title="Loading sources" /></Panel>
+      ) : null}
+      {sourceLoadError ? (
+        <Panel>
+          <ErrorState
+            title={sources.length > 0 ? "Could not refresh sources" : "Could not load sources"}
+            description={sourceLoadError.message}
+            action={<Button type="button" loading={loading} onClick={retrySourceRefresh}>Retry</Button>}
+          />
+        </Panel>
+      ) : null}
       <Panel>
         {webhookUrl ? (
           <div className="listen-secret">
