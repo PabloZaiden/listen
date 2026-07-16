@@ -33,8 +33,10 @@ credentials.
 
 ## CLI command routing
 
-Listen uses Webapp's CLI dispatcher and result printer for finite commands:
-`version`, `config`, `notify`, and `update`. The `serve` command is handled
+Listen uses `@pablozaiden/webapp/cli` for generic argument/flag lookup, result
+types, dispatching, and result printing for finite commands: `version`,
+`config`, `notify`, and `update`. Listen keeps command-specific validation and
+business behavior in its own handlers. The `serve` command is handled
 separately because it owns the long-running server lifecycle. `config` remains
 a Listen-owned namespace for webhook configuration and must not be replaced by
 a framework command with the same name.
