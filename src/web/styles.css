@@ -3,15 +3,6 @@
   --listen-notification-radius: 1rem;
 }
 
-html,
-body,
-#root {
-  width: 100%;
-  height: 100%;
-  height: 100dvh;
-  overflow: hidden;
-}
-
 button,
 a,
 [role="button"] {
