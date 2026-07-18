@@ -90,6 +90,7 @@ function createAuthenticatedTestUser(username: string): AuthenticatedTestUser {
     prefix: "listen_test",
     tokenHash: createHash("sha256").update(token, "utf8").digest("base64url"),
     scopes: ["*"],
+    kind: "user",
     createdAt,
   });
   return { userId: user.id, token };

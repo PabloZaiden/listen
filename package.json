@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@pablozaiden/installer": "latest",
-    "@pablozaiden/webapp": "1.0.0",
+    "@pablozaiden/webapp": "1.1.1",
     "react": "latest",
     "react-dom": "latest",
     "react-markdown": "latest",
