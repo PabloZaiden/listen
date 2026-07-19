@@ -26,5 +26,5 @@ function redactLogValue(value: unknown): unknown {
 }
 
 function shouldRedactLogKey(key: string): boolean {
-  return /token|cookie|authorization|auth|passkey|credential|secret|private|publickey|p256dh/i.test(key);
+  return /token|cookie|authorization|auth|passkey|credential|secret|private|publickey|p256dh|endpoint/i.test(key);
 }
