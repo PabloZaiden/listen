@@ -1,4 +1,7 @@
+import { createLogger } from "@pablozaiden/webapp/web";
 import { listenUpdateAppBadge } from "./app-badge";
+
+const log = createLogger("service-worker");
 
 function parseUnreadCount(value: unknown): number | undefined {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
@@ -18,7 +21,7 @@ self.addEventListener("push", (event) => {
     const parsed = event.data?.json();
     rawPayload = typeof parsed === "object" && parsed !== null ? parsed : undefined;
   } catch (error) {
-    console.warn("Could not parse browser push payload", { error });
+    log.warn("Could not parse browser push payload", { error });
   }
 
   const rawTitle = rawPayload?.title;
@@ -58,7 +61,7 @@ self.addEventListener("notificationclick", (event) => {
       const parsed = new URL(rawUrl, self.location.origin);
       targetUrl = parsed.origin === self.location.origin ? `${parsed.pathname}${parsed.search}${parsed.hash}` : fallback;
     } catch (error) {
-      console.warn("Could not parse notification click URL", { error });
+      log.warn("Could not parse notification click URL", { error });
     }
   }
 

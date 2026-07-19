@@ -1,3 +1,7 @@
+import { createLogger } from "@pablozaiden/webapp/web";
+
+const log = createLogger("app-badge");
+
 type ListenAppBadgeNavigator = {
   setAppBadge?: (contents?: number) => Promise<void>;
   clearAppBadge?: () => Promise<void>;
@@ -29,7 +33,7 @@ export async function listenUpdateAppBadge(
     }
     await badgeNavigator.setAppBadge?.(0);
   } catch (error) {
-    console.warn(`Could not update app badge from ${warningSource}`, { error });
+    log.warn(`Could not update app badge from ${warningSource}`, { error });
   }
 }
 
