@@ -2,10 +2,9 @@ import type { Server } from "bun";
 import listenIcon192Path from "./web/icons/listen-192.png" with { type: "file" };
 import listenIcon512Path from "./web/icons/listen-512.png" with { type: "file" };
 import appleTouchIconPath from "./web/icons/apple-touch-icon.png" with { type: "file" };
-import { createWebAppPublicAsset, createWebAppServer, defineRoutes, errorResponse, getRequestBaseUrl, getRequestOriginInfo, jsonResponse, notFound, parseJson, readRuntimeConfig, sqliteWebAppStore, successResponse, type ResourceRealtimeEvent, type RuntimeConfig, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
+import { createLogger, createWebAppPublicAsset, createWebAppServer, defineRoutes, errorResponse, getRequestBaseUrl, getRequestOriginInfo, jsonResponse, notFound, parseJson, readRuntimeConfig, sqliteWebAppStore, successResponse, type ResourceRealtimeEvent, type RuntimeConfig, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
 import { browserPushEndpointRequestSchema, browserPushSubscribeRequestSchema, createSourceRequestSchema, listNotificationsQuerySchema, sourceMutationResponseSchema, type WebhookNotificationRequest, webhookNotificationRequestSchema } from "@listen/contracts";
 import { WEBHOOK_JSON_BODY_MAX_BYTES } from "@listen/shared";
-import { createLogger, setLogLevel } from "./core/logger";
 import { verifyWebhookToken } from "./core/webhook-tokens";
 import { createNotificationFromWebhook, deleteNotification, deleteNotifications, getNotificationDetail, listNotifications, markNotificationRead, markNotificationUnread, markNotificationsRead } from "./core/notifications";
 import { createSource, deleteSourceAndNotifications, getSourceForWebhook, listSources, markSourceUsed, rotateSourceToken } from "./core/sources";
@@ -258,7 +257,6 @@ function createListenWebAppServer(
     version: LISTEN_VERSION,
     store,
     auth: { passkeys: true, apiKeys: true, deviceAuth: true },
-    logLevel: { onChange: setLogLevel },
     realtime: { path: "/api/ws" },
     routes: createRoutes(runtimeConfig, webhookRateLimiter, webhookCallerKeyResolver),
     publicRoutes: { [SERVICE_WORKER_ASSET.path]: createWebAppPublicAsset(SERVICE_WORKER_ASSET) },

@@ -16,12 +16,11 @@
   },
   "dependencies": {
     "@pablozaiden/installer": "latest",
-    "@pablozaiden/webapp": "1.0.0",
+    "@pablozaiden/webapp": "github:PabloZaiden/webapp#d106e4aa30b1a48e62d135b3e994b8a04d607347",
     "react": "latest",
     "react-dom": "latest",
     "react-markdown": "latest",
     "remark-gfm": "latest",
-    "tslog": "latest",
     "web-push": "^3.6.7",
     "zod": "latest"
   },

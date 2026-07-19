@@ -1,5 +1,6 @@
 import type { NotificationDetail, NotificationListItem, WebhookNotificationRequest } from "@listen/contracts";
 import { requireUserId } from "@listen/shared";
+import { createLogger } from "@pablozaiden/webapp/server";
 import {
   deleteNotificationById,
   deleteNotifications as deletePersistedNotifications,
@@ -13,7 +14,7 @@ import {
   type PersistedNotification,
 } from "../persistence/notifications";
 import { sendBrowserPushNotification } from "./browser-push";
-import { createLogger, errorLogFields } from "./logger";
+import { errorLogFields } from "./log-fields";
 
 const log = createLogger("notifications");
 
