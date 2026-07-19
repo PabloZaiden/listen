@@ -4,7 +4,7 @@ import { appJson, createLogger, useRealtimeRefresh, useToast } from "@pablozaide
 import { mutationErrorMessage } from "../mutation-state";
 import { reconcileCreatedSource, reconcileDeletedSource, reconcileRotatedSource, refreshSourceCollection } from "../source-state";
 
-const log = createLogger("useSources");
+const log = createLogger("use-sources");
 
 export type SourcesController = {
   sources: SourceResponse[];
@@ -124,7 +124,7 @@ export function useSources(): SourcesController {
     const controller = new AbortController();
     void refresh(controller.signal).catch((requestError) => {
       if (!controller.signal.aborted) {
-        log.error("Could not load sources", requestError);
+        log.error("Could not load sources", { error: requestError });
       }
     });
     return () => {
