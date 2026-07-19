@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@pablozaiden/installer": "latest",
-    "@pablozaiden/webapp": "github:PabloZaiden/webapp#f386e1fec857e5f9d245c585ba7d6ef0b23b2509",
+    "@pablozaiden/webapp": "github:PabloZaiden/webapp#da159a873988d58d55e6022e1f768a5babc3b43e",
     "react": "latest",
     "react-dom": "latest",
     "react-markdown": "latest",
