@@ -1,5 +1,6 @@
 import webPush from "web-push";
 import type { BrowserPushConfigResponse, BrowserPushStatusResponse, BrowserPushSubscription, BrowserPushSubscriptionResponse, NotificationListItem } from "@listen/contracts";
+import { createLogger } from "@pablozaiden/webapp/server";
 import {
   BROWSER_PUSH_FAILURE_BACKOFF_BASE_MS,
   BROWSER_PUSH_FAILURE_BACKOFF_MAX_MS,
@@ -18,7 +19,7 @@ import {
   type PersistedBrowserPushSubscription,
   type PersistedVapidKeys,
 } from "../persistence/browser-push";
-import { createLogger, errorLogFields } from "./logger";
+import { errorLogFields } from "./log-fields";
 
 const log = createLogger("browser-push");
 const PUSH_TTL_SECONDS = 60 * 60;

@@ -2,10 +2,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach } from "bun:test";
+import { DEFAULT_LOG_LEVEL, setLogLevel } from "@pablozaiden/webapp/server";
 import { closeDatabaseForTests, initializeDatabase } from "../src/persistence/database";
 import { setBrowserPushSenderForTests } from "../src/core/browser-push";
-import { setLogLevel } from "../src/core/logger";
-import { DEFAULT_LOG_LEVEL } from "@listen/shared";
 
 let dataDir: string;
 let homeDir: string;

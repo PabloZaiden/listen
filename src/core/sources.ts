@@ -1,5 +1,6 @@
 import type { SourceMutationResponse, SourceResponse } from "@listen/contracts";
 import { requireUserId } from "@listen/shared";
+import { createLogger } from "@pablozaiden/webapp/server";
 import {
   deleteSource,
   getSourceById,
@@ -11,7 +12,6 @@ import {
   type PersistedSource,
 } from "../persistence/sources";
 import { generateWebhookToken, hashWebhookToken } from "./webhook-tokens";
-import { createLogger } from "./logger";
 
 const log = createLogger("sources");
 
