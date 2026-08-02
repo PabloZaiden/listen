@@ -15,20 +15,20 @@
     "tsc": "mkdir -p .cache/tsc && bunx tsc --noEmit --pretty false --incremental --tsBuildInfoFile .cache/tsc/build.tsbuildinfo"
   },
   "dependencies": {
-    "@pablozaiden/installer": "latest",
-    "@pablozaiden/webapp": "1.4.0",
-    "react": "latest",
-    "react-dom": "latest",
-    "react-markdown": "latest",
-    "remark-gfm": "latest",
-    "web-push": "^3.6.7",
-    "zod": "latest"
+    "@pablozaiden/installer": "0.0.7",
+    "@pablozaiden/webapp": "1.4.4",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1",
+    "web-push": "3.6.7",
+    "zod": "4.4.3"
   },
   "devDependencies": {
-    "@types/bun": "latest",
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
-    "@types/web-push": "^3.6.4",
+    "@types/bun": "1.3.14",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "@types/web-push": "3.6.4",
     "typescript": "7.0.2"
   }
 }
