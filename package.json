@@ -16,9 +16,9 @@
   },
   "dependencies": {
     "@pablozaiden/installer": "0.0.7",
-    "@pablozaiden/webapp": "1.4.4",
-    "react": "19.2.7",
-    "react-dom": "19.2.7",
+    "@pablozaiden/webapp": "1.4.5",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "react-markdown": "10.1.0",
     "remark-gfm": "4.0.1",
     "web-push": "3.6.7",
