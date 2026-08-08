@@ -1,4 +1,5 @@
 import type { Server } from "bun";
+import listenIconSvgPath from "./web/icons/listen.svg" with { type: "file" };
 import listenIcon192Path from "./web/icons/listen-192.png" with { type: "file" };
 import listenIcon512Path from "./web/icons/listen-512.png" with { type: "file" };
 import appleTouchIconPath from "./web/icons/apple-touch-icon.png" with { type: "file" };
@@ -246,7 +247,7 @@ function createListenWebAppServer(
     runtimeConfig,
     web: {
       icons: {
-        favicon: { src: listenIcon192Path, sizes: "192x192", type: "image/png" },
+        favicon: { src: listenIconSvgPath, sizes: "any", type: "image/svg+xml" },
         appleTouch: { src: appleTouchIconPath, sizes: "180x180", type: "image/png" },
         manifest: [
           { src: listenIcon192Path, sizes: "192x192", type: "image/png", purpose: "any maskable" },

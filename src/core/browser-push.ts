@@ -176,6 +176,8 @@ function nextFailureAttempt(failureCount: number, failedAt: Date): string {
   return new Date(failedAt.getTime() + delayMs).toISOString();
 }
 
+const LISTEN_PUSH_ICON_PATH = "/webapp-favicon.svg";
+
 function toPushPayload(notification: NotificationListItem, unreadCount: number): BrowserPushPayload {
   const url = `/#/notification?id=${encodeURIComponent(notification.id)}`;
   return {
@@ -186,8 +188,8 @@ function toPushPayload(notification: NotificationListItem, unreadCount: number):
       notificationId: notification.id,
       url,
     },
-    icon: "/webapp-icon.svg",
-    badge: "/webapp-icon.svg",
+    icon: LISTEN_PUSH_ICON_PATH,
+    badge: LISTEN_PUSH_ICON_PATH,
     tag: notification.id,
   };
 }
