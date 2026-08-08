@@ -1,6 +1,6 @@
 ---
 name: listen-notifications
-description: 'Send notifications from coding agents using the listen CLI. Use when: notifying a human that work completed, failed, needs review, needs input, or long-running automation needs attention. Assumes listen is installed, available on PATH or in ./.bin/listen , and already configured.'
+description: 'Send notifications from coding agents using the listen CLI. Use when: notifying a human that work completed, failed, needs review, needs input, or long-running automation needs attention. Assumes listen is installed, available on PATH or in ./.bin/listen, and already configured.'
 argument-hint: '[notification purpose or message]'
 ---
 
