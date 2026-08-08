@@ -1,6 +1,6 @@
 # Listen
 
-Listen is a passkey-protected, multi-user notification inbox for coding agents and automation tools. It runs as one `listen` binary that serves the web UI and provides CLI commands for agents to send notifications through source-specific webhook URLs.
+Listen is a multi-user notification inbox for coding agents and automation tools. Its web UI uses the Webapp framework's passkey, API-key, and device authentication, and it runs as one `listen` binary that serves the web UI and provides CLI commands for agents to send notifications through source-specific webhook URLs.
 
 ## Installation
 
@@ -14,7 +14,7 @@ curl -fsSL https://raw.githubusercontent.com/pablozaiden/installer/main/install.
 listen serve
 ```
 
-Open the server in a browser, create the owner user/passkey, create a webhook source, and copy the generated URL immediately. Webhook URLs are only shown on source creation and token rotation.
+Open the server in a browser, complete the owner user/passkey setup, create a webhook source, and copy the generated URL immediately. Webhook URLs are only shown on source creation and token rotation.
 
 ## Running the server
 
@@ -41,6 +41,9 @@ separately because it owns the long-running server lifecycle. `config` remains
 a Listen-owned namespace for webhook configuration and must not be replaced by
 a framework command with the same name.
 
+Use `listen update [--check] [--version <version>]` for installer-backed release
+checks and updates.
+
 ## Browser notifications
 
 The Settings view includes per-browser Web Push subscriptions. Click "Enable on this browser" to allow Listen to send system notifications to the current browser profile. Repeat this on each desktop or mobile browser where you want notifications. If the browser is already subscribed, Settings shows an unsubscribe action for only that browser.
@@ -51,7 +54,11 @@ Safari support uses the modern Web Push API. On iPhone and iPad, install Listen 
 
 ## First passkey setup
 
-All non-public backend operations require passkey authentication unless `LISTEN_DISABLE_PASSKEY=true`, `1`, or `yes` is set for emergency recovery. Passkeys require HTTPS except on localhost.
+All protected backend operations use Webapp framework authentication. Listen
+enables passkeys, API keys, and device authentication; the initial browser
+setup creates the owner user and passkey. Set `LISTEN_DISABLE_PASSKEY=true`,
+`1`, or `yes` only for emergency recovery or disposable local development.
+Passkeys require HTTPS except on localhost.
 
 ## Creating a webhook source
 
@@ -71,7 +78,10 @@ listen config show
 listen config clear
 ```
 
-Config is stored at `~/.listen/config.json`. `LISTEN_WEBHOOK_URL` overrides stored config for `listen notify`.
+`listen config set-webhook-url` writes `~/.listen/config.json`. An optional
+`listen.config.json` beside the binary is read first, and
+`LISTEN_WEBHOOK_URL` overrides both for `listen notify`. `listen config clear`
+removes the home config file; it does not remove a sidecar config.
 
 ## Sending notifications
 
@@ -137,7 +147,7 @@ The proxy must strip client-supplied forwarded headers before setting the truste
 
 ## Webhook rate limiting and deployment
 
-Webhook ingestion uses independent 120-request-per-minute windows for the direct caller peer and each validated source. Caller and source buckets expire after five minutes and each in-memory map is capped at 10,000 entries. A separate 10,000-request-per-minute process-wide ceiling is an emergency safety valve, not the normal isolation mechanism.
+Webhook ingestion uses independent 120-request-per-minute windows for the direct caller peer and each validated source. Caller and source buckets expire after five minutes and each in-memory map is capped at 10,000 entries. A separate 10,000-request-per-minute process-wide ceiling applies after the caller check and before source lookup/token validation; it is an emergency safety valve, not the normal isolation mechanism.
 
 The limiter uses Bun's direct request peer address. The current framework trust-proxy configuration supports forwarded protocol, host, and prefix values for URL/origin handling, but does not make a forwarded client address trustworthy; Listen therefore does not parse `X-Forwarded-For` for rate-limit identity. Clients behind the same reverse proxy may share the caller bucket, while source-token buckets remain independent. Proxies must strip client-supplied forwarded headers before setting any trusted values.
 
@@ -152,11 +162,14 @@ Limiter state is local to one process. Deployments with multiple Listen processe
 | `LISTEN_DATA_DIR` | `./data` | Directory containing `listen.db`. |
 | `LISTEN_DISABLE_PASSKEY` | unset | `true`, `1`, or `yes` bypasses passkey enforcement. |
 | `LISTEN_DISABLE_SAME_ORIGIN_CHECK` | unset | `true`, `1`, or `yes` disables same-origin protection. |
+| `LISTEN_AUTH_ISSUER` | unset | Issuer for framework device-auth tokens; defaults to `urn:listen:webapp`. |
+| `LISTEN_IN_MEMORY_LOGS` | `false` | Enables framework in-memory server log storage. |
 | `LISTEN_LOG_LEVEL` | `info` | Server log level. |
 | `LISTEN_PUBLIC_BASE_URL` | unset | Origin-only absolute `http` or `https` URL used for framework and Listen-generated URLs. |
 | `LISTEN_TRUST_PROXY` | `false` (Docker image: `true`) | Enables trusted forwarded request headers. |
 | `LISTEN_TRUST_PROXY_HEADERS` | `proto,host,prefix` when enabled | Forwarded headers to trust; `prefix` is included in generated public webhook URLs when configured. |
 | `LISTEN_TRUST_PROXY_CHAIN` | `first` | Which value to use from comma-separated forwarded header chains. |
+| `LISTEN_VAPID_SUBJECT` | unset | Browser-push VAPID subject; when unset, uses the HTTPS public origin or `mailto:listen@example.com` for non-HTTPS origins. |
 | `LISTEN_WEBHOOK_URL` | unset | CLI webhook override for `listen notify`. |
 
 ## Development
@@ -182,12 +195,13 @@ In another terminal, seed realistic sources and notifications through the public
 bun run seed:demo
 ```
 
-Open `http://127.0.0.1:3000/`. `LISTEN_DEMO_RESET=true bun run seed:demo` clears notifications first but leaves sources in place; use a fresh `LISTEN_DATA_DIR` for a fully clean demo dataset.
+The seeder uses `LISTEN_BASE_URL=http://127.0.0.1:3000` by default; set it
+when the server uses another URL. `LISTEN_DEMO_SOURCE_COUNT` and
+`LISTEN_DEMO_NOTIFICATION_COUNT` default to `4` and `30`. Use
+`LISTEN_DEMO_RESET=true bun run seed:demo` to clear notifications first while
+leaving sources in place; use a fresh `LISTEN_DATA_DIR` for a fully clean demo
+dataset. Open `http://127.0.0.1:3000/` after starting the server.
 
 ## Release artifacts
 
 Release workflows build Linux and macOS binaries for x64 and arm64 with `.sha256` checksum assets, publish Docker images to GHCR, and support `listen update` through `@pablozaiden/installer`.
-
-## License
-
-See the repository license.

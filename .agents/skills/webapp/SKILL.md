@@ -49,7 +49,7 @@ Use this skill when building an app with `@pablozaiden/webapp`.
 - All destructive delete actions must show a framework `ConfirmDialog` before the mutation. Never wire Delete buttons directly to `DELETE` requests.
 - Server lifecycle actions such as kill/reboot must show confirmation first and then a 15-second shutdown countdown progress bar after a successful response.
 - Test user-visible functionality and behavior, not implementation details such as internal class names, DOM structure or component internals.
-- When creating a production-ready app, add the Dockerfile and GitHub Actions from `docs/github-actions.md`: PR build/test/dev-smoke/Docker-smoke, main GHCR Docker image, binary release, and Docker release.
+- When creating a production-ready app, add a root Dockerfile and GitHub Actions for PR build/test/dev-smoke/Docker-smoke, a main GHCR Docker image, a binary release, and a Docker release.
 
 ## Visual validation with Playwright
 
@@ -232,11 +232,11 @@ PATCH: (_req, ctx) => {
 
 ## Validation checklist
 
-Run targeted tests, `bun run tsc`, example binary builds, and app health checks. Use the temporary Playwright harness above for visual validation, and use `docs/auth-validation.md` for manual passkey/API-key/device-auth validation. If Docker base images can be pulled, build and run the example containers and check `/api/health`.
+Run targeted tests, `bun run tsc`, example binary builds, and app health checks. Use the temporary Playwright harness above for visual validation. For manual passkey/API-key/device-auth validation, use disposable local data and exercise the framework's browser and bearer-token flows. If Docker base images can be pulled, build and run the example containers and check `/api/health`.
 
 ## CI/CD checklist for generated apps
 
-Use `docs/github-actions.md` as the source of truth. At minimum, generated apps should include:
+At minimum, generated apps should include:
 
 - A root `Dockerfile` that builds with `oven/bun`, copies the standalone binary into a slim runtime image, runs as a non-root user, and healthchecks `/api/health`.
 - `.github/workflows/pr.yml` with install, build, test, Bun dev-server smoke checks, and Docker image smoke checks.

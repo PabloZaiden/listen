@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Resolve release version
-        uses: pablozaiden/installer/.github/actions/resolve-version@d65a93c1af0d7ce62524d6ccdfee44d0f6ceac4e # installer #7
+        uses: pablozaiden/installer/.github/actions/resolve-version@d65a93c1af0d7ce62524d6ccdfee44d0f6ceac4e # installer v0.0.7
         with:
           mode: release
           update_package_version: true
