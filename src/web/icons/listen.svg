@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Listen</title>
+  <desc id="desc">A simple white L with a red notification dot.</desc>
+
+  <rect width="512" height="512" rx="112" fill="#2b2b2b"/>
+
+  <rect x="144" y="146" width="65" height="143" fill="#fff"/>
+  <rect x="144" y="301" width="224" height="65" fill="#fff"/>
+
+  <circle cx="345.25" cy="178.5" r="22.75" fill="#ff3b30"/>
+</svg>
