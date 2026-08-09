@@ -1,6 +1,7 @@
 import "./../setup";
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { Script } from "node:vm";
 import { sqliteWebAppStore, type UserRecord } from "@pablozaiden/webapp/server";
 import { sourceMutationResponseSchema, sourceResponseSchema, type SourceMutationResponse } from "@listen/contracts";
 import { BROWSER_PUSH_ENDPOINT_MAX_CHARS, LIST_NOTIFICATIONS_DEFAULT_LIMIT, LIST_NOTIFICATIONS_MAX_LIMIT, WEBHOOK_JSON_BODY_MAX_BYTES } from "@listen/shared";
@@ -195,7 +196,7 @@ describe("API", () => {
     expect(response.headers.get("service-worker-allowed")).toBe("/");
     const body = await response.text();
     expect(body.length).toBeGreaterThan(0);
-    expect(() => new Function(body)).not.toThrow();
+    expect(() => new Script(body)).not.toThrow();
   });
 
   test("protected Listen routes reject unauthenticated requests", async () => {
