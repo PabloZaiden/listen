@@ -193,7 +193,9 @@ describe("API", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/javascript");
     expect(response.headers.get("service-worker-allowed")).toBe("/");
-    expect((await response.text()).length).toBeGreaterThan(0);
+    const body = await response.text();
+    expect(body.length).toBeGreaterThan(0);
+    expect(() => new Function(body)).not.toThrow();
   });
 
   test("protected Listen routes reject unauthenticated requests", async () => {

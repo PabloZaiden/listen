@@ -1,11 +1,7 @@
 import { createLogger } from "@pablozaiden/webapp/web";
+import { updateAppBadge, type ListenAppBadgeNavigator } from "./app-badge-core";
 
 const log = createLogger("app-badge");
-
-type ListenAppBadgeNavigator = {
-  setAppBadge?: (contents?: number) => Promise<void>;
-  clearAppBadge?: () => Promise<void>;
-};
 
 type ListenAppBadgeUpdater = (
   badgeNavigator: ListenAppBadgeNavigator,
@@ -18,23 +14,9 @@ export async function listenUpdateAppBadge(
   unreadCount: number,
   warningSource: string,
 ): Promise<void> {
-  if (!badgeNavigator.setAppBadge && !badgeNavigator.clearAppBadge) {
-    return;
-  }
-
-  try {
-    if (unreadCount > 0) {
-      await badgeNavigator.setAppBadge?.(unreadCount);
-      return;
-    }
-    if (badgeNavigator.clearAppBadge) {
-      await badgeNavigator.clearAppBadge();
-      return;
-    }
-    await badgeNavigator.setAppBadge?.(0);
-  } catch (error) {
-    log.warn(`Could not update app badge from ${warningSource}`, { error });
-  }
+  await updateAppBadge(badgeNavigator, unreadCount, warningSource, (message, error) => {
+    log.warn(message, { error });
+  });
 }
 
 (globalThis as typeof globalThis & { listenUpdateAppBadge: ListenAppBadgeUpdater }).listenUpdateAppBadge = listenUpdateAppBadge;
