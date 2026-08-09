@@ -1,7 +1,8 @@
-import { createLogger } from "@pablozaiden/webapp/web";
-import { listenUpdateAppBadge } from "./app-badge";
+import { updateAppBadge } from "./app-badge-core";
 
-const log = createLogger("service-worker");
+function warn(message: string, error: unknown): void {
+  console.warn(message, { error });
+}
 
 function parseUnreadCount(value: unknown): number | undefined {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
@@ -12,7 +13,7 @@ async function updateAppBadgeFromPush(unreadCount: number | undefined): Promise<
     return;
   }
 
-  await listenUpdateAppBadge(navigator, unreadCount, "browser push");
+  await updateAppBadge(navigator, unreadCount, "browser push", warn);
 }
 
 self.addEventListener("push", (event) => {
@@ -21,7 +22,7 @@ self.addEventListener("push", (event) => {
     const parsed = event.data?.json();
     rawPayload = typeof parsed === "object" && parsed !== null ? parsed : undefined;
   } catch (error) {
-    log.warn("Could not parse browser push payload", { error });
+    warn("Could not parse browser push payload", error);
   }
 
   const rawTitle = rawPayload?.title;
@@ -61,7 +62,7 @@ self.addEventListener("notificationclick", (event) => {
       const parsed = new URL(rawUrl, self.location.origin);
       targetUrl = parsed.origin === self.location.origin ? `${parsed.pathname}${parsed.search}${parsed.hash}` : fallback;
     } catch (error) {
-      log.warn("Could not parse notification click URL", { error });
+      warn("Could not parse notification click URL", error);
     }
   }
 
