@@ -5,5 +5,5 @@ try {
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`Fatal: ${message}`);
-  process.exitCode = 1;
+  process.exit(1);
 }

@@ -61,9 +61,7 @@ export function createListenCli() {
     version: LISTEN_VERSION,
     realtimePath: "/api/ws",
     routeCatalog,
-    start: async () => {
-      await startServer();
-    },
+    start: () => startServer(),
     update: LISTEN_UPDATER,
     commands: {
       config: configCommand(),
