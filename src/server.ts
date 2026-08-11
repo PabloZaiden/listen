@@ -39,7 +39,7 @@ interface ListenServerOptions {
   webhookCallerKeyResolver?: WebhookCallerKeyResolver;
 }
 
-function createRoutes(
+export function createRoutes(
   runtimeConfig: RuntimeConfig,
   webhookRateLimiter: WebhookRateLimiter,
   webhookCallerKeyResolver: WebhookCallerKeyResolver,

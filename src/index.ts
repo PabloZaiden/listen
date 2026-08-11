@@ -1,10 +1,7 @@
-import { runMain } from "./entrypoint";
+import { createListenCli } from "./cli";
 
 try {
-  const exitCode = await runMain(Bun.argv.slice(2));
-  if (exitCode !== undefined) {
-    process.exit(exitCode);
-  }
+  process.exitCode = await createListenCli().run();
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`Fatal: ${message}`);

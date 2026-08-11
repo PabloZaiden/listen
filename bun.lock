@@ -5,8 +5,7 @@
     "": {
       "name": "@pablozaiden/listen",
       "dependencies": {
-        "@pablozaiden/installer": "0.0.7",
-        "@pablozaiden/webapp": "1.5.4",
+        "@pablozaiden/webapp": "1.5.7",
         "react": "19.2.8",
         "react-dom": "19.2.8",
         "react-markdown": "10.1.0",
@@ -62,7 +61,7 @@
 
     "@pablozaiden/installer": ["@pablozaiden/installer@0.0.7", "", { "peerDependencies": { "typescript": "^7.0.0" } }, "sha512-ZIcBfkxatiMYajviF8TKu6Yt7aUMWOLp2DufTLFqOJqQQzv8p8TNt5IesHirfFy9R2vIFnz1gRsUk5CBm+5eaw=="],
 
-    "@pablozaiden/webapp": ["@pablozaiden/webapp@1.5.4", "", { "dependencies": { "@simplewebauthn/browser": "13.3.0", "@simplewebauthn/server": "13.3.2", "bun-plugin-tailwind": "0.1.2", "jose": "6.2.7", "tailwindcss": "4.3.3", "tslog": "5.1.0", "zod": "4.4.3" }, "peerDependencies": { "react": "19.2.8", "react-dom": "19.2.8" } }, "sha512-m0BGe1fUHqORbUZtu0/O1SdK/FwW092YZbBbRpB/dsT9Zwzc74Ckc1qsL9EiFaGn590+tpeqCzTIXXcvqedbLA=="],
+    "@pablozaiden/webapp": ["@pablozaiden/webapp@1.5.7", "", { "dependencies": { "@pablozaiden/installer": "0.0.7", "@simplewebauthn/browser": "13.3.0", "@simplewebauthn/server": "13.3.2", "bun-plugin-tailwind": "0.1.2", "jose": "6.2.7", "tailwindcss": "4.3.3", "tslog": "5.1.0", "zod": "4.4.3" }, "peerDependencies": { "react": "19.2.8", "react-dom": "19.2.8" } }, "sha512-EuGeHQdM7kWYY/B2LL9lPTDHfMCeAT9pE51FrAgc+/VwX8ICs7RBah6XFF+sDra0rsKcgImyhxiAASEbZGghMw=="],
 
     "@peculiar/asn1-android": ["@peculiar/asn1-android@2.8.0", "", { "dependencies": { "@peculiar/asn1-schema": "^2.8.0", "asn1js": "^3.0.10", "tslib": "^2.8.1" } }, "sha512-skLbS+IOGv1lUgDqtChr8xvtvEr3HMse/JGBaL2r1J1o/n7a8wqOrovMtlRq/UXLhxvmLaONP67hwtshgzwfzA=="],
 

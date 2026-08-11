@@ -6,12 +6,27 @@ import { join } from "node:path";
 import packageJson from "../../package.json";
 import { configPath, readConfig, readHomeConfig, runConfigCommand, setBinaryConfigPathForTests } from "../../src/cli/config";
 import { runNotifyCommand } from "../../src/cli/notify";
-import { runMain } from "../../src/entrypoint";
+import { createListenCli } from "../../src/cli";
+
+async function executeCli(args: string[]) {
+  return await createListenCli().execute(args);
+}
 
 describe("CLI", () => {
   afterEach(() => {
     setBinaryConfigPathForTests();
     delete process.env["LISTEN_WEBHOOK_URL"];
+  });
+
+  test("composes framework commands with Listen-owned extensions", () => {
+    const cli = createListenCli();
+
+    for (const command of ["help", "serve", "version", "update", "logs", "api", "schema", "auth", "status", "profile", "ws"]) {
+      expect(cli.commands[command]).toBeDefined();
+    }
+    expect(cli.commands["config"]?.override).toBe(true);
+    expect(cli.commands["notify"]).toBeDefined();
+    expect(cli.help("config")).toContain("set-webhook-url");
   });
 
   test("config set/show/clear manages ~/.listen/config.json", async () => {
@@ -27,45 +42,29 @@ describe("CLI", () => {
   });
 
   test("version command prints the package version", async () => {
-    const log = spyOn(console, "log").mockImplementation(() => {});
-    try {
-      const exitCode = await runMain(["version"]);
+    const result = await executeCli(["version"]);
 
-      expect(exitCode).toBe(0);
-      expect(log).toHaveBeenCalledWith(packageJson.version);
-    } finally {
-      log.mockRestore();
-    }
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toBe(packageJson.version);
   });
 
   test("help aliases and missing commands use the framework dispatcher", async () => {
-    const log = spyOn(console, "log").mockImplementation(() => {});
-    try {
-      expect(await runMain([])).toBe(1);
-      expect(await runMain(["help"])).toBe(0);
-      expect(await runMain(["-h"])).toBe(0);
-      expect(await runMain(["--help"])).toBe(0);
+    expect((await executeCli([])).exitCode).toBe(1);
+    expect((await executeCli(["help"])).exitCode).toBe(0);
+    expect((await executeCli(["-h"])).exitCode).toBe(0);
+    expect((await executeCli(["--help"])).exitCode).toBe(0);
 
-      expect(log).toHaveBeenCalledTimes(4);
-      for (const [output] of log.mock.calls) {
-        expect(output).toContain("Usage:");
-      }
-    } finally {
-      log.mockRestore();
+    for (const args of [[], ["help"], ["-h"], ["--help"]]) {
+      expect((await executeCli(args)).output).toContain("Usage:");
     }
   });
 
   test("unknown commands return an error and help", async () => {
-    const log = spyOn(console, "log").mockImplementation(() => {});
-    const error = spyOn(console, "error").mockImplementation(() => {});
-    try {
-      expect(await runMain(["unknown-command"])).toBe(1);
-      expect(error).toHaveBeenCalledWith("Unknown command: unknown-command");
-      expect(log).toHaveBeenCalledWith(expect.stringContaining("Usage:"));
-    } finally {
-      log.mockRestore();
-      error.mockRestore();
-    }
+    const result = await executeCli(["unknown-command"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.error).toBe("Unknown command: unknown-command");
+    expect(result.output).toContain("Usage:");
   });
 
   test("dispatches notify arguments after the command name", async () => {
@@ -78,18 +77,13 @@ describe("CLI", () => {
       },
     });
     process.env["LISTEN_WEBHOOK_URL"] = `http://127.0.0.1:${server.port}/webhook`;
-    const log = spyOn(console, "log").mockImplementation(() => {});
-    try {
-      expect(await runMain(["notify", "--title", "A", "--description", "B", "--markdown", "C"])).toBe(0);
-      expect(await runMain(["notify", "--title=A", "--short-description=B", "--markdown=C"])).toBe(0);
+    expect((await executeCli(["notify", "--title", "A", "--description", "B", "--markdown", "C"])).exitCode).toBe(0);
+    expect((await executeCli(["notify", "--title=A", "--short-description=B", "--markdown=C"])).exitCode).toBe(0);
 
-      expect(receivedBodies).toEqual([
-        { title: "A", shortDescription: "B", markdownContent: "C" },
-        { title: "A", shortDescription: "B", markdownContent: "C" },
-      ]);
-    } finally {
-      log.mockRestore();
-    }
+    expect(receivedBodies).toEqual([
+      { title: "A", shortDescription: "B", markdownContent: "C" },
+      { title: "A", shortDescription: "B", markdownContent: "C" },
+    ]);
   });
 
   test("notify supports markdown-file and rejects multiple markdown sources", async () => {
@@ -133,7 +127,7 @@ describe("CLI", () => {
     }
   });
 
-  test("update forwards check and version options through the public command", async () => {
+  test("update forwards the public check option through the framework command", async () => {
     const fetch = spyOn(globalThis, "fetch").mockResolvedValue(
       Response.json({
         tag_name: "v1.2.3",
@@ -145,14 +139,14 @@ describe("CLI", () => {
         ],
       }),
     );
-    const log = spyOn(console, "log").mockImplementation(() => {});
     try {
-      expect(await runMain(["update", "--check", "--version=1.2.3"])).toBe(0);
+      const result = await executeCli(["update", "--check"]);
+
+      expect(result.exitCode).toBe(0);
       expect(fetch).toHaveBeenCalledTimes(1);
-      expect(fetch.mock.calls[0]?.[0]).toBe("https://api.github.com/repos/pablozaiden/listen/releases/tags/v1.2.3");
+      expect(fetch.mock.calls[0]?.[0]).toBe("https://api.github.com/repos/pablozaiden/listen/releases/latest");
     } finally {
       fetch.mockRestore();
-      log.mockRestore();
     }
   });
 

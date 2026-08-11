@@ -33,13 +33,11 @@ credentials.
 
 ## CLI command routing
 
-Listen uses `@pablozaiden/webapp/cli` for generic argument/flag lookup, result
-types, dispatching, and result printing for finite commands: `version`,
-`config`, `notify`, and `update`. Listen keeps command-specific validation and
-business behavior in its own handlers. The `serve` command is handled
-separately because it owns the long-running server lifecycle. `config` remains
-a Listen-owned namespace for webhook configuration and must not be replaced by
-a framework command with the same name.
+Listen composes its command-line interface with `createWebAppCli()` from
+`@pablozaiden/webapp`. The framework owns `help`, `serve`, `version`, `update`,
+`logs`, `api`, `schema`, `auth`, `status`, `profile`, and `ws`. Listen keeps
+only its domain commands: `config` (an explicit override for webhook
+configuration) and `notify`.
 
 Use `listen update [--check] [--version <version>]` for installer-backed release
 checks and updates.
