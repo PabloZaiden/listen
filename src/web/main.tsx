@@ -11,6 +11,7 @@ import {
 } from "@pablozaiden/webapp/web";
 import "@pablozaiden/webapp/web/styles.css";
 import { LISTEN_VERSION } from "../version";
+import listenLogo from "./icons/listen.svg";
 import "./app-badge";
 import { buildInboxActions } from "./actions/inbox-actions";
 import { buildNotificationActions, requestNotificationDelete } from "./actions/notification-actions";
@@ -180,6 +181,7 @@ function ListenApp(): React.ReactElement {
     <>
       <WebAppRoot
         appName="Listen"
+        appIcon={listenLogo}
         homeRoute={{ view: "inbox" }}
         version={LISTEN_VERSION}
         sidebar={{ getNodes: sidebarNodes, search: false }}
