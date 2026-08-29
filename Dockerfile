@@ -4,7 +4,7 @@ COPY . .
 RUN bun install --frozen-lockfile
 RUN bun src/build.ts
 
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
