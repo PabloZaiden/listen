@@ -5,5 +5,9 @@
 		"ghcr.io/devcontainers/features/docker-in-docker:4": {},
 		"ghcr.io/devcontainers/features/node:2": {},
 		"ghcr.io/devcontainers-extra/features/bun:1": {}
-	}
+	},
+	"containerEnv": {
+		"WEBAPP_WEBVIEW_NO_SANDBOX": "1"
+	},
+	"postCreateCommand": "./.devcontainer/install-prerequisites.sh"
 }
