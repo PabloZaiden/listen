@@ -88,10 +88,13 @@ infrastructure when they have no supported consumer.
 
 Application state delivery uses framework realtime as the single event system.
 Do not add or maintain a parallel app-owned event emitter.
-When a domain hook owns a user-scoped live collection, that hook also owns
-the collection's `useRealtimeRefresh` subscription. Route views should not
-subscribe to the same resource a second time; keep refreshes authenticated
-and user-scoped.
+When a domain hook owns a user-scoped live collection, use framework
+`useLiveQuery` for its subscription, activation/reconnect snapshots,
+cancellation and mutation reconciliation. Route views must not subscribe to
+the same resource a second time. Keep the notification owner mounted in
+`ListenApp` so inbox, detail and header mutations share its mutation barrier.
+Use query dependencies for route filters and authoritative loaded-prefix
+snapshots for paginated recovery; keep unread counts user-wide.
 
 ## Testing
 

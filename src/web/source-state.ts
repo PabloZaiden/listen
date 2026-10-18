@@ -11,14 +11,3 @@ export function reconcileRotatedSource(current: SourceResponse[], source: Source
 export function reconcileDeletedSource(current: SourceResponse[], sourceId: string): SourceResponse[] {
   return current.filter((source) => source.id !== sourceId);
 }
-
-export async function refreshSourceCollection(
-  refresh: () => Promise<void>,
-  reportError: (error: unknown) => void,
-): Promise<void> {
-  try {
-    await refresh();
-  } catch (error) {
-    reportError(error);
-  }
-}
