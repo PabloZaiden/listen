@@ -1,6 +1,5 @@
 :root {
   --listen-unread: #3b82f6;
-  --listen-notification-radius: 1rem;
 }
 
 button,
@@ -181,27 +180,7 @@ a,
 .listen-swipe-row {
   position: relative;
   overflow: hidden;
-  border-radius: 0;
-  background: color-mix(in srgb, var(--wapp-muted), transparent 92%);
   touch-action: pan-y;
-}
-
-.listen-swipe-row:first-child {
-  border-top-left-radius: var(--listen-notification-radius);
-  border-top-right-radius: var(--listen-notification-radius);
-}
-
-.listen-swipe-row:last-child {
-  border-bottom-right-radius: var(--listen-notification-radius);
-  border-bottom-left-radius: var(--listen-notification-radius);
-}
-
-.listen-swipe-row + .listen-swipe-row {
-  border-top: 0;
-}
-
-.listen-swipe-row.is-open .wapp-data-list-row-actions {
-  display: none;
 }
 
 .listen-swipe-actions {
@@ -249,7 +228,6 @@ a,
 .listen-swipe-content {
   position: relative;
   z-index: 1;
-  background: var(--wapp-surface);
   transition: transform 160ms ease;
   will-change: transform;
 }
@@ -259,14 +237,7 @@ a,
   transition: none;
 }
 
-.listen-swipe-row .listen-swipe-content .wapp-data-list-row {
-  min-width: 100%;
-  border: 0;
-  border-radius: 0;
-  background: var(--wapp-surface);
-}
-
-.listen-swipe-content .wapp-data-list-row-main small {
+.listen-notification-description {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
