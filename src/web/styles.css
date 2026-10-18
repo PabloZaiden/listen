@@ -180,6 +180,7 @@ a,
 .listen-swipe-row {
   position: relative;
   overflow: hidden;
+  border-radius: 0.5rem;
   touch-action: pan-y;
 }
 
@@ -235,6 +236,11 @@ a,
 .listen-swipe-row.is-open .listen-swipe-content {
   margin-right: 144px;
   transition: none;
+}
+
+.listen-swipe-row.is-revealing .listen-notification-row {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
 .listen-notification-description {

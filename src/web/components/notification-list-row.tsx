@@ -198,6 +198,7 @@ export function NotificationListRow({
         onPointerCancel={handlePointerCancel}
       >
         <DataListRow
+          className="listen-notification-row"
           title={(
             <span className={`listen-notification-title ${notification.readAt ? "" : "unread"}`}>
               {notification.readAt ? null : <span className="listen-unread-dot" aria-hidden="true" />}
