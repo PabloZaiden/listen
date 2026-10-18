@@ -15,7 +15,7 @@
     "tsc": "mkdir -p .cache/tsc && bunx tsc --noEmit --pretty false --incremental --tsBuildInfoFile .cache/tsc/build.tsbuildinfo"
   },
   "dependencies": {
-    "@pablozaiden/webapp": "github:PabloZaiden/webapp#1fc2da1b3c6f3ca3d5f63983bd218681254d2f79",
+    "@pablozaiden/webapp": "github:PabloZaiden/webapp#860875f6a622e6b989fb13e6c6d7aeac4c57cbbf",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-markdown": "10.1.0",
