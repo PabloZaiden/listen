@@ -54,6 +54,8 @@ export function NotificationListRow({
   const markLabel = isUnread ? "Mark as read" : "Mark as unread";
   const currentOffset = dragOffset ?? 0;
   const isRevealingActions = shouldShowSwipeActionTray(isOpen, currentOffset);
+  // Keep the tray behind the exposed area without giving the row an opaque skin.
+  const hiddenActionWidth = isOpen ? 0 : SWIPE_ACTION_WIDTH + currentOffset;
 
   function closeActions(): void {
     setDragOffset(undefined);
@@ -163,7 +165,11 @@ export function NotificationListRow({
 
   return (
     <div className={`listen-swipe-row ${isOpen ? "is-open" : ""} ${isRevealingActions ? "is-revealing" : ""}`}>
-      <div className="listen-swipe-actions" aria-hidden={!isOpen}>
+      <div
+        className="listen-swipe-actions"
+        aria-hidden={!isOpen}
+        style={{ clipPath: `inset(0 0 0 ${hiddenActionWidth}px)` }}
+      >
         <button
           type="button"
           className="listen-swipe-action"
@@ -199,6 +205,7 @@ export function NotificationListRow({
             </span>
           )}
           description={notification.shortDescription}
+          descriptionClassName="listen-notification-description"
           meta={isRevealingActions ? undefined : <NotificationTimestamp value={notification.createdAt} />}
           onClick={handleRowClick}
         />

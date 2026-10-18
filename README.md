@@ -91,6 +91,9 @@ listen notify --title "Icon" --description "PNG attached" --markdown "Done." --i
 
 ## Notification read state
 
+The inbox uses Webapp's shared list-row typography, spacing, and interaction
+styling. Swipe a row horizontally to reveal its read-state and delete actions.
+
 Listen uses `read` and `unread` for notification state transitions. Fetching
 `GET /api/notifications/:id` marks an unread notification read the first time;
 repeated detail fetches do not change its state or the unread count. Use
