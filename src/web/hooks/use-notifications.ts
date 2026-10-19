@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { NotificationDetail, NotificationListItem } from "@listen/contracts";
 import { LIST_NOTIFICATIONS_DEFAULT_LIMIT } from "@listen/shared";
-import { appJson } from "@pablozaiden/webapp/web";
+import { appJson, useLiveQuery } from "@pablozaiden/webapp/web";
 import {
+  createNotificationCollectionState,
+  mergeNotificationPage,
   removeNotification,
   replaceNotification,
-  refreshNotificationCollection,
-  resetNotificationCollection,
   type NotificationCollectionState,
   type NotificationListResponse,
 } from "../notification-pagination";
@@ -33,209 +33,149 @@ export type NotificationActions = {
   deleteAll: (sourceId?: string) => Promise<void>;
 };
 
-export function useNotificationActions(): NotificationActions {
-  const getDetail = useCallback(async (notificationId: string, signal?: AbortSignal): Promise<NotificationDetail> => {
-    const response = await appJson<{ notification: NotificationDetail }>(`/api/notifications/${encodeURIComponent(notificationId)}`, { signal });
-    return response.notification;
-  }, []);
-
-  const markReadState = useCallback(async (notification: NotificationListItem): Promise<NotificationListItem> => {
-    const action = notification.readAt ? "unread" : "read";
-    const response = await appJson<{ notification: NotificationListItem }>(`/api/notifications/${encodeURIComponent(notification.id)}/${action}`, { method: "POST" });
-    return response.notification;
-  }, []);
-
-  const markUnread = useCallback(async (notificationId: string): Promise<NotificationListItem> => {
-    const response = await appJson<{ notification: NotificationListItem }>(`/api/notifications/${encodeURIComponent(notificationId)}/unread`, { method: "POST" });
-    return response.notification;
-  }, []);
-
-  const deleteNotification = useCallback(async (notificationId: string): Promise<void> => {
-    await appJson(`/api/notifications/${encodeURIComponent(notificationId)}`, { method: "DELETE" });
-  }, []);
-
-  const markAllAsRead = useCallback(async (sourceId?: string): Promise<number> => {
-    const params = new URLSearchParams();
-    if (sourceId) params.set("sourceId", sourceId);
-    const response = await appJson<{ updatedCount?: number }>(`/api/notifications/read${params.size ? `?${params}` : ""}`, { method: "POST" });
-    return response.updatedCount ?? 0;
-  }, []);
-
-  const deleteAll = useCallback(async (sourceId?: string): Promise<void> => {
-    const params = new URLSearchParams();
-    if (sourceId) params.set("sourceId", sourceId);
-    await appJson(`/api/notifications${params.size ? `?${params}` : ""}`, { method: "DELETE" });
-  }, []);
-
-  return useMemo(
-    () => ({ getDetail, markReadState, markUnread, deleteNotification, markAllAsRead, deleteAll }),
-    [deleteAll, deleteNotification, getDetail, markAllAsRead, markReadState, markUnread],
-  );
-}
-
-export type NotificationRefreshOptions = {
-  reset?: boolean;
-};
-
 export type NotificationLoader = {
   result?: NotificationCollectionState;
   loading: boolean;
   loadingMore: boolean;
   error?: Error;
   loadMoreError?: Error;
-  refresh: (options?: NotificationRefreshOptions) => Promise<void>;
   retry: () => Promise<void>;
   loadNext: () => Promise<void>;
-  updateNotification: (notification: NotificationListItem) => void;
-  removeNotification: (notificationId: string) => void;
+  actions: NotificationActions;
 };
 
-function toNotificationLoadError(error: unknown): Error {
-  return error instanceof Error ? error : new Error("Could not load notifications");
-}
-
-export function useNotifications(sourceId?: string): NotificationLoader {
-  const [collection, setCollection] = useState<NotificationCollectionState>(() => resetNotificationCollection(sourceId));
-  const collectionRef = useRef(collection);
-  const activeRequestRef = useRef<AbortController | undefined>(undefined);
-  const requestGenerationRef = useRef(0);
-  const loadingMoreRef = useRef(false);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<Error>();
-  const [loadMoreError, setLoadMoreError] = useState<Error>();
-  const [loaded, setLoaded] = useState(false);
-
-  function commitCollection(next: NotificationCollectionState): void {
-    collectionRef.current = next;
-    setCollection(next);
-  }
-
-  function beginRequest(): { controller: AbortController; generation: number } {
-    activeRequestRef.current?.abort();
-    const controller = new AbortController();
-    activeRequestRef.current = controller;
-    const generation = requestGenerationRef.current + 1;
-    requestGenerationRef.current = generation;
-    return { controller, generation };
-  }
-
-  function ownsRequest(controller: AbortController, generation: number): boolean {
-    return activeRequestRef.current === controller && requestGenerationRef.current === generation;
-  }
-
-  function isCurrentRequest(controller: AbortController, generation: number): boolean {
-    return ownsRequest(controller, generation) && !controller.signal.aborted;
-  }
-
-  const requestPage = useCallback(async (offset: number, signal: AbortSignal): Promise<NotificationListResponse> => {
+async function loadNotificationCollection({
+  sourceId,
+  previous,
+  minimumLoaded,
+  signal,
+}: {
+  sourceId?: string;
+  previous?: NotificationCollectionState;
+  minimumLoaded: number;
+  signal: AbortSignal;
+}): Promise<NotificationCollectionState> {
+  const current = previous?.sourceId === sourceId ? previous : undefined;
+  let collection: NotificationCollectionState | undefined;
+  let offset = 0;
+  let required = Math.max(LIST_NOTIFICATIONS_DEFAULT_LIMIT, minimumLoaded, current?.loadedThrough ?? 0);
+  do {
     const params = new URLSearchParams({
-      limit: String(LIST_NOTIFICATIONS_DEFAULT_LIMIT),
+      limit: String(Math.min(LIST_NOTIFICATIONS_DEFAULT_LIMIT, required - offset)),
       offset: String(offset),
     });
     if (sourceId) params.set("sourceId", sourceId);
-    return appJson<NotificationListResponse>(`/api/notifications?${params}`, { signal });
-  }, [sourceId]);
-
-  const refreshInternal = useCallback(async (reset: boolean): Promise<void> => {
-    if (reset) {
-      commitCollection(resetNotificationCollection(sourceId));
-      setLoading(true);
-      setError(undefined);
-      setLoadMoreError(undefined);
-      setLoaded(false);
+    const response = await appJson<NotificationListResponse>(`/api/notifications?${params}`, { signal });
+    if (!collection && current) {
+      required = Math.max(required, current.loadedThrough + Math.max(0, response.pagination.total - current.total));
     }
-    loadingMoreRef.current = false;
-    setLoadingMore(false);
-    const { controller, generation } = beginRequest();
-    try {
-      const response = await requestPage(0, controller.signal);
-      if (!isCurrentRequest(controller, generation)) return;
-      const next = refreshNotificationCollection(collectionRef.current, response, reset);
-      commitCollection(next);
-      setLoaded(true);
-      syncAppBadgeFromUnreadCount(response.unreadCount);
-      setError(undefined);
-      setLoadMoreError(undefined);
-    } catch (requestError) {
-      if (!isCurrentRequest(controller, generation)) return;
-      setError(toNotificationLoadError(requestError));
-    } finally {
-      if (!ownsRequest(controller, generation)) return;
-      activeRequestRef.current = undefined;
-      setLoading(false);
-    }
-  }, [requestPage, sourceId]);
+    collection = collection
+      ? mergeNotificationPage(collection, response)
+      : createNotificationCollectionState(response, sourceId);
+    offset = collection.nextOffset ?? 0;
+  } while (offset > 0 && offset < required);
+  return collection;
+}
 
-  const refresh = useCallback(async (options: NotificationRefreshOptions = {}): Promise<void> => {
-    await refreshInternal(options.reset === true);
-  }, [refreshInternal]);
-
-  const retry = useCallback(async (): Promise<void> => {
-    const current = collectionRef.current;
-    await refreshInternal(current.total === 0 && current.notifications.length === 0);
-  }, [refreshInternal]);
-
-  const loadNext = useCallback(async (): Promise<void> => {
-    if (loadingMoreRef.current) return;
-    const offset = collectionRef.current.nextOffset;
-    if (offset === undefined) return;
-    loadingMoreRef.current = true;
-    setLoadingMore(true);
-    setLoadMoreError(undefined);
-    const { controller, generation } = beginRequest();
-    try {
-      const response = await requestPage(offset, controller.signal);
-      if (!isCurrentRequest(controller, generation)) return;
-      commitCollection(refreshNotificationCollection(collectionRef.current, response));
-      syncAppBadgeFromUnreadCount(response.unreadCount);
-      setError(undefined);
-    } catch (requestError) {
-      if (!isCurrentRequest(controller, generation)) return;
-      setLoadMoreError(toNotificationLoadError(requestError));
-    } finally {
-      if (!ownsRequest(controller, generation)) return;
-      activeRequestRef.current = undefined;
-      loadingMoreRef.current = false;
-      setLoadingMore(false);
-    }
-  }, [requestPage]);
-
-  const updateNotification = useCallback((notification: NotificationListItem): void => {
-    commitCollection(replaceNotification(collectionRef.current, notification));
-  }, []);
-
-  const removeLoadedNotification = useCallback((notificationId: string): void => {
-    commitCollection(removeNotification(collectionRef.current, notificationId));
-  }, []);
+export function useNotifications(sourceId?: string): NotificationLoader {
+  const requestedDepth = useRef<{ sourceId?: string; count: number }>({ sourceId, count: 0 });
+  const [paginationRead, setPaginationRead] = useState(false);
+  const { data, loading, error, refresh, mutate } = useLiveQuery<NotificationCollectionState>({
+    deps: [sourceId],
+    load: (signal, previous) => loadNotificationCollection({
+      sourceId,
+      previous,
+      minimumLoaded: requestedDepth.current.sourceId === sourceId ? requestedDepth.current.count : 0,
+      signal,
+    }),
+    // Unread counts are user-wide, including notifications outside the current source filter.
+    realtime: { resources: ["notifications"] },
+  });
+  const result = data?.sourceId === sourceId ? data : undefined;
 
   useEffect(() => {
-    const reset = resetNotificationCollection(sourceId);
-    commitCollection(reset);
-    setLoading(true);
-    setError(undefined);
-    setLoadMoreError(undefined);
-    setLoaded(false);
-    void refreshInternal(true).catch((requestError) => {
-      setError(toNotificationLoadError(requestError));
-    });
-    return () => {
-      activeRequestRef.current?.abort();
-      activeRequestRef.current = undefined;
-      requestGenerationRef.current += 1;
+    if (result) syncAppBadgeFromUnreadCount(result.unreadCount);
+  }, [result]);
+
+  useEffect(() => {
+    requestedDepth.current = { sourceId, count: 0 };
+  }, [sourceId]);
+
+  useEffect(() => {
+    setPaginationRead(false);
+  }, [data, sourceId]);
+
+  const loadNext = useCallback(async (): Promise<void> => {
+    if (loading || !result || result.nextOffset === undefined) return;
+    requestedDepth.current = {
+      sourceId,
+      count: result.nextOffset + LIST_NOTIFICATIONS_DEFAULT_LIMIT,
     };
-  }, [refreshInternal, sourceId]);
+    setPaginationRead(true);
+    await refresh();
+  }, [loading, refresh, result, sourceId]);
+
+  const getDetail = useCallback(async (notificationId: string, signal?: AbortSignal): Promise<NotificationDetail> => {
+    return mutate(async (mutationSignal) => {
+      const response = await appJson<{ notification: NotificationDetail }>(`/api/notifications/${encodeURIComponent(notificationId)}`, {
+        signal: signal ? AbortSignal.any([signal, mutationSignal]) : mutationSignal,
+      });
+      return response.notification;
+    }, (current, notification) => current ? replaceNotification(current, notification) : undefined);
+  }, [mutate, sourceId]);
+
+  const markReadState = useCallback(async (notification: NotificationListItem): Promise<NotificationListItem> => {
+    const action = notification.readAt ? "unread" : "read";
+    return mutate(async (signal) => {
+      const response = await appJson<{ notification: NotificationListItem }>(`/api/notifications/${encodeURIComponent(notification.id)}/${action}`, { method: "POST", signal });
+      return response.notification;
+    }, (current, updated) => current ? replaceNotification(current, updated) : undefined);
+  }, [mutate]);
+
+  const markUnread = useCallback(async (notificationId: string): Promise<NotificationListItem> => {
+    return mutate(async (signal) => {
+      const response = await appJson<{ notification: NotificationListItem }>(`/api/notifications/${encodeURIComponent(notificationId)}/unread`, { method: "POST", signal });
+      return response.notification;
+    }, (current, notification) => current ? replaceNotification(current, notification) : undefined);
+  }, [mutate]);
+
+  const deleteNotification = useCallback(async (notificationId: string): Promise<void> => {
+    await mutate(
+      (signal) => appJson(`/api/notifications/${encodeURIComponent(notificationId)}`, { method: "DELETE", signal }),
+      (current) => current ? removeNotification(current, notificationId) : undefined,
+    );
+  }, [mutate]);
+
+  const markAllAsRead = useCallback(async (filterSourceId?: string): Promise<number> => {
+    return mutate(async (signal) => {
+      const params = new URLSearchParams();
+      if (filterSourceId) params.set("sourceId", filterSourceId);
+      const response = await appJson<{ updatedCount?: number }>(`/api/notifications/read${params.size ? `?${params}` : ""}`, { method: "POST", signal });
+      return response.updatedCount ?? 0;
+    });
+  }, [mutate]);
+
+  const deleteAll = useCallback(async (filterSourceId?: string): Promise<void> => {
+    await mutate(async (signal) => {
+      const params = new URLSearchParams();
+      if (filterSourceId) params.set("sourceId", filterSourceId);
+      await appJson(`/api/notifications${params.size ? `?${params}` : ""}`, { method: "DELETE", signal });
+    });
+  }, [mutate]);
+
+  const actions = useMemo(
+    () => ({ getDetail, markReadState, markUnread, deleteNotification, markAllAsRead, deleteAll }),
+    [deleteAll, deleteNotification, getDetail, markAllAsRead, markReadState, markUnread],
+  );
 
   return {
-    result: loaded && collection.sourceId === sourceId ? collection : undefined,
-    loading: loading || collection.sourceId !== sourceId,
-    loadingMore,
-    error,
-    loadMoreError,
-    refresh,
-    retry,
+    result,
+    loading: loading || (data !== undefined && !result),
+    loadingMore: paginationRead && loading,
+    error: paginationRead ? undefined : error,
+    loadMoreError: paginationRead ? error : undefined,
+    retry: refresh,
     loadNext,
-    updateNotification,
-    removeNotification: removeLoadedNotification,
+    actions,
   };
 }

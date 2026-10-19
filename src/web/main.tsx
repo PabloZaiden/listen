@@ -17,7 +17,7 @@ import { buildInboxActions } from "./actions/inbox-actions";
 import { buildNotificationActions, requestNotificationDelete } from "./actions/notification-actions";
 import { BrowserPushSettings } from "./browserPushSettings";
 import { useConfirmation } from "./hooks/use-confirmation";
-import { useNotificationActions, type NotificationRefreshOptions } from "./hooks/use-notifications";
+import { useNotifications } from "./hooks/use-notifications";
 import { useSources } from "./hooks/use-sources";
 import { InboxView } from "./routes/inbox";
 import { NotificationView } from "./routes/notification";
@@ -41,21 +41,11 @@ function ListenApp(): React.ReactElement {
     rotateSourceToken,
     deleteSource: deleteSourceRequest,
   } = useSources();
-  const notificationActions = useNotificationActions();
-  const { confirmState, confirmBusy, requestConfirm, closeConfirm, runConfirm } = useConfirmation();
-  const [notificationRefreshRequest, setNotificationRefreshRequest] = useState({
-    token: 0,
-    reset: false,
-  });
   const [currentRoute, setCurrentRoute] = useState<WebAppRoute>({ view: "inbox" });
+  const notifications = useNotifications(sourceIdFromRoute(currentRoute));
+  const notificationActions = notifications.actions;
+  const { confirmState, confirmBusy, requestConfirm, closeConfirm, runConfirm } = useConfirmation();
   const headerMutations = useMutationTracker();
-
-  const requestNotificationRefresh = useCallback((options: NotificationRefreshOptions = {}): void => {
-    setNotificationRefreshRequest((current) => ({
-      token: current.token + 1,
-      reset: options.reset === true,
-    }));
-  }, []);
 
   function selectedSourceName(sourceId: string | undefined): string | undefined {
     return sources.find((source) => source.id === sourceId)?.name;
@@ -66,7 +56,6 @@ function ListenApp(): React.ReactElement {
     if (!headerMutations.start(mutationKey)) return;
     try {
       const updatedCount = await notificationActions.markAllAsRead(sourceId);
-      requestNotificationRefresh();
       toast.success(updatedCount === 1 ? "1 notification marked as read." : `${updatedCount} notifications marked as read.`);
     } catch (error) {
       toast.error(mutationErrorMessage(error, "Could not mark notifications as read."));
@@ -85,7 +74,6 @@ function ListenApp(): React.ReactElement {
       successMessage: "Notifications deleted.",
       action: async () => {
         await notificationActions.deleteAll(sourceId);
-        requestNotificationRefresh({ reset: true });
       },
     });
   }
@@ -97,7 +85,6 @@ function ListenApp(): React.ReactElement {
     if (!headerMutations.start(mutationKey)) return;
     try {
       await notificationActions.markUnread(id);
-      requestNotificationRefresh();
       navigateTo(sourceFilterRoute(sourceIdFromRoute(route)));
       toast.success("Notification marked as unread.");
     } catch (error) {
@@ -114,7 +101,6 @@ function ListenApp(): React.ReactElement {
       requestConfirm,
       deleteNotification: notificationActions.deleteNotification,
       onDeleted: () => {
-        requestNotificationRefresh();
         navigateTo(sourceFilterRoute(sourceIdFromRoute(route)));
       },
     });
@@ -138,7 +124,7 @@ function ListenApp(): React.ReactElement {
       },
       { type: "item", id: "sources", title: "Sources", route: { view: "sources" } },
     ];
-  }, [confirmBusy, currentRoute, headerMutations, notificationActions, requestNotificationRefresh, sources, toast]);
+  }, [confirmBusy, currentRoute, headerMutations, notificationActions, sources, toast]);
 
   const headerActions = useCallback((route: WebAppRoute): ActionMenuItem[] => {
     if (route.view !== "notification") return [];
@@ -151,18 +137,17 @@ function ListenApp(): React.ReactElement {
       onMarkUnread: () => { void markNotificationUnread(route); },
       onDelete: () => deleteNotification(route),
     });
-  }, [confirmBusy, headerMutations, notificationActions, requestNotificationRefresh, sources, toast]);
+  }, [confirmBusy, headerMutations, notificationActions, sources, toast]);
 
   const routes = useMemo(() => ({
     inbox: (route: WebAppRoute) => (
       <InboxView
         route={route}
         requestConfirm={requestConfirm}
-        notificationRefreshRequest={notificationRefreshRequest}
-        notificationActions={notificationActions}
+        notifications={notifications}
       />
     ),
-    notification: (route: WebAppRoute) => <NotificationView route={route} notificationActions={notificationActions} />,
+    notification: (route: WebAppRoute) => <NotificationView route={route} notificationLoader={notifications} />,
     sources: () => (
       <SourcesView
         sources={sources}
@@ -175,7 +160,7 @@ function ListenApp(): React.ReactElement {
         requestConfirm={requestConfirm}
       />
     ),
-  }), [createSource, deleteSourceRequest, notificationActions, notificationRefreshRequest, refreshSources, requestConfirm, rotateSourceToken, sources, sourcesError, sourcesLoading]);
+  }), [createSource, deleteSourceRequest, notificationActions, notifications, refreshSources, requestConfirm, rotateSourceToken, sources, sourcesError, sourcesLoading]);
 
   return (
     <>

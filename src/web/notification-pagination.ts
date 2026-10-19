@@ -68,26 +68,16 @@ export function mergeNotificationPage(
   };
 }
 
-export function refreshNotificationCollection(
-  state: NotificationCollectionState,
-  response: NotificationListResponse,
-  reset = false,
-): NotificationCollectionState {
-  if (reset || response.pagination.total === 0) {
-    return createNotificationCollectionState(response, state.sourceId);
-  }
-  return mergeNotificationPage(state, response);
-}
-
 export function replaceNotification(
   state: NotificationCollectionState,
   notification: NotificationListItem,
 ): NotificationCollectionState {
-  if (!state.notifications.some((existing) => existing.id === notification.id)) {
-    return state;
-  }
+  const previous = state.notifications.find((existing) => existing.id === notification.id);
+  if (!previous) return state;
+  const unreadChange = Number(!notification.readAt) - Number(!previous.readAt);
   return {
     ...state,
+    unreadCount: Math.max(0, state.unreadCount + unreadChange),
     notifications: state.notifications
       .map((existing) => existing.id === notification.id ? notification : existing)
       .sort(compareNotificationOrder),
@@ -98,24 +88,16 @@ export function removeNotification(
   state: NotificationCollectionState,
   notificationId: string,
 ): NotificationCollectionState {
-  if (!state.notifications.some((notification) => notification.id === notificationId)) {
-    return state;
-  }
+  const previous = state.notifications.find((notification) => notification.id === notificationId);
+  if (!previous) return state;
   const total = Math.max(0, state.total - 1);
+  const loadedThrough = Math.max(0, state.loadedThrough - 1);
   return {
     ...state,
     notifications: state.notifications.filter((notification) => notification.id !== notificationId),
+    unreadCount: Math.max(0, state.unreadCount - Number(!previous.readAt)),
     total,
-    nextOffset: state.loadedThrough < total ? state.loadedThrough : undefined,
-  };
-}
-
-export function resetNotificationCollection(sourceId?: string): NotificationCollectionState {
-  return {
-    sourceId,
-    notifications: [],
-    unreadCount: 0,
-    total: 0,
-    loadedThrough: 0,
+    loadedThrough,
+    nextOffset: loadedThrough < total ? loadedThrough : undefined,
   };
 }

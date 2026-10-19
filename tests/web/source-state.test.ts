@@ -4,7 +4,6 @@ import {
   reconcileCreatedSource,
   reconcileDeletedSource,
   reconcileRotatedSource,
-  refreshSourceCollection,
 } from "../../src/web/source-state";
 
 function source(id: string, name = id): SourceResponse {
@@ -28,33 +27,4 @@ describe("source state", () => {
     expect(reconcileDeletedSource([created, rotated], created.id)).toEqual([rotated]);
   });
 
-  test("runs one refresh and reports refresh failures without rejecting", async () => {
-    const failure = new Error("refresh failed");
-    let refreshCalls = 0;
-    const reported: unknown[] = [];
-
-    await expect(refreshSourceCollection(async () => {
-      refreshCalls += 1;
-      throw failure;
-    }, (error) => {
-      reported.push(error);
-    })).resolves.toBeUndefined();
-
-    expect(refreshCalls).toBe(1);
-    expect(reported).toEqual([failure]);
-  });
-
-  test("resolves successful refreshes without reporting an error", async () => {
-    let refreshCalls = 0;
-    const reported: unknown[] = [];
-
-    await refreshSourceCollection(async () => {
-      refreshCalls += 1;
-    }, (error) => {
-      reported.push(error);
-    });
-
-    expect(refreshCalls).toBe(1);
-    expect(reported).toEqual([]);
-  });
 });

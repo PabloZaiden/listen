@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { NotificationListItem } from "@listen/contracts";
 import {
   Button,
@@ -9,14 +9,13 @@ import {
   Page,
   Panel,
   replaceWebAppRoute,
-  useRealtimeRefresh,
   useToast,
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
 import { requestNotificationDelete } from "../actions/notification-actions";
 import { NotificationListRow } from "../components/notification-list-row";
 import type { ConfirmState } from "../hooks/use-confirmation";
-import { useNotifications, type NotificationActions } from "../hooks/use-notifications";
+import type { NotificationLoader } from "../hooks/use-notifications";
 import { mutationErrorMessage, useMutationTracker } from "../mutation-state";
 import { notificationRoute } from "./route-utils";
 
@@ -27,18 +26,13 @@ function notificationReadMutationKey(notificationId: string): string {
 export type InboxViewProps = {
   route: WebAppRoute;
   requestConfirm: (confirm: ConfirmState) => void;
-  notificationRefreshRequest: {
-    token: number;
-    reset: boolean;
-  };
-  notificationActions: NotificationActions;
+  notifications: NotificationLoader;
 };
 
 export function InboxView({
   route,
   requestConfirm,
-  notificationRefreshRequest,
-  notificationActions,
+  notifications: notificationLoader,
 }: InboxViewProps) {
   const toast = useToast();
   const notificationMutations = useMutationTracker();
@@ -49,33 +43,11 @@ export function InboxView({
     loadingMore,
     error,
     loadMoreError,
-    refresh: refreshNotifications,
     retry,
     loadNext,
-    updateNotification,
-    removeNotification,
-  } = useNotifications(sourceId);
+    actions: notificationActions,
+  } = notificationLoader;
   const [openRowId, setOpenRowId] = useState<string>();
-
-  useRealtimeRefresh({
-    resources: ["notifications"],
-    refresh: async () => {
-      try {
-        await refreshNotifications();
-      } catch (notificationError) {
-        toast.error(mutationErrorMessage(notificationError, "Could not refresh notifications."));
-      }
-    },
-  });
-
-  const lastNotificationRefreshToken = useRef(notificationRefreshRequest.token);
-  useEffect(() => {
-    if (lastNotificationRefreshToken.current === notificationRefreshRequest.token) return;
-    lastNotificationRefreshToken.current = notificationRefreshRequest.token;
-    void refreshNotifications({ reset: notificationRefreshRequest.reset }).catch((refreshError) => {
-      toast.error(mutationErrorMessage(refreshError, "Could not refresh notifications."));
-    });
-  }, [notificationRefreshRequest, refreshNotifications, toast]);
 
   useEffect(() => {
     if (!openRowId) return undefined;
@@ -97,20 +69,13 @@ export function InboxView({
     const action = notification.readAt ? "unread" : "read";
     if (!notificationMutations.start(mutationKey)) return false;
     try {
-      let updatedNotification: NotificationListItem;
       try {
-        updatedNotification = await notificationActions.markReadState(notification);
+        await notificationActions.markReadState(notification);
       } catch (mutationError) {
         toast.error(mutationErrorMessage(mutationError, `Could not mark notification as ${action}.`));
         return false;
       }
-      updateNotification(updatedNotification);
       setOpenRowId(undefined);
-      try {
-        await refreshNotifications();
-      } catch (refreshError) {
-        toast.error(mutationErrorMessage(refreshError, `Notification marked as ${action}, but could not refresh notifications.`));
-      }
       return true;
     } finally {
       notificationMutations.finish(mutationKey);
@@ -133,10 +98,8 @@ export function InboxView({
     requestNotificationDelete(notification.id, {
       requestConfirm,
       deleteNotification: notificationActions.deleteNotification,
-      onDeleted: async () => {
-        removeNotification(notification.id);
+      onDeleted: () => {
         setOpenRowId(undefined);
-        await refreshNotifications();
       },
     });
   }

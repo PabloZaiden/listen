@@ -4,13 +4,15 @@ import remarkGfm from "remark-gfm";
 import {
   Button,
   EmptyState,
+  ErrorState,
   FormActions,
+  LoadingState,
   Page,
   Panel,
   replaceWebAppRoute,
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
-import type { NotificationActions } from "../hooks/use-notifications";
+import type { NotificationActions, NotificationLoader } from "../hooks/use-notifications";
 import { sourceFilterRoute } from "./route-utils";
 
 function normalizeMarkdownForDisplay(value: string): string {
@@ -19,13 +21,15 @@ function normalizeMarkdownForDisplay(value: string): string {
 
 export type NotificationViewProps = {
   route: WebAppRoute;
-  notificationActions: NotificationActions;
+  notificationLoader: NotificationLoader;
 };
 
-export function NotificationView({ route, notificationActions }: NotificationViewProps) {
+export function NotificationView({ route, notificationLoader }: NotificationViewProps) {
   const id = typeof route.id === "string" ? route.id : "";
   const returnSourceId = typeof route.sourceId === "string" ? route.sourceId : undefined;
   const returnRoute = sourceFilterRoute(returnSourceId);
+  const { result, actions: notificationActions, error: collectionError, retry } = notificationLoader;
+  const ownerReady = result !== undefined && result.sourceId === returnSourceId;
   const [detail, setDetail] = useState<Awaited<ReturnType<NotificationActions["getDetail"]>>>();
   const [error, setError] = useState<string>();
 
@@ -38,16 +42,31 @@ export function NotificationView({ route, notificationActions }: NotificationVie
   }, [id, notificationActions]);
 
   useEffect(() => {
-    const controller = new AbortController();
     setDetail(undefined);
     setError(undefined);
+    if (!ownerReady) return;
+    const controller = new AbortController();
     void refresh(controller.signal).catch((requestError) => {
       if (!controller.signal.aborted) {
         setError(requestError instanceof Error ? requestError.message : String(requestError));
       }
     });
     return () => controller.abort();
-  }, [refresh]);
+  }, [ownerReady, refresh]);
+
+  if (!ownerReady) {
+    return (
+      <Page>
+        {collectionError ? (
+          <ErrorState
+            title="Could not load notifications"
+            description={collectionError.message}
+            action={<Button type="button" onClick={() => { void retry(); }}>Retry</Button>}
+          />
+        ) : <Panel><LoadingState title="Loading notification..." /></Panel>}
+      </Page>
+    );
+  }
 
   if (error) {
     return <Page><EmptyState title="Notification not found" description={error} /></Page>;
