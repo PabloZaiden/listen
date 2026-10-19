@@ -147,7 +147,7 @@ function ListenApp(): React.ReactElement {
         notifications={notifications}
       />
     ),
-    notification: (route: WebAppRoute) => <NotificationView route={route} notificationActions={notificationActions} />,
+    notification: (route: WebAppRoute) => <NotificationView route={route} notificationLoader={notifications} />,
     sources: () => (
       <SourcesView
         sources={sources}

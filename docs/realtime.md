@@ -16,6 +16,8 @@ pages. Refreshes rebuild that prefix instead of merging a new first page into
 old records. Positive total growth extends the prefix so new arrivals do not
 discard loaded older pages. Pagination remains ordered and deduplicated. Route
 filter changes reset the collection; reconnects preserve loaded depth.
+Each page read is capped to the remaining required prefix, so individual
+arrivals do not implicitly load extra pages of unrelated older history.
 Notifications deliberately subscribe to all of the current user's notification
 changes because unread counts and the app badge remain user-wide even on a
 source-filtered route.
@@ -25,6 +27,11 @@ invalidations into one pending follow-up. Every initiating notification/source
 mutation enters its query's mutation barrier before the HTTP request; response
 reconciliation and the subsequent authoritative refresh share that owner.
 Snapshots started before a mutation cannot undo its result.
+The detail view waits for the authoritative collection matching its route's
+source filter before marking a notification read through that owner. Initial
+deep links and filter changes therefore cannot start a mutation against a
+retired query lifecycle. Collection failures remain visible with an explicit
+retry instead of leaving the detail waiting indefinitely.
 
 Server publications remain authenticated and user-targeted. Public webhooks
 derive the target user and source from the verified webhook source, never from

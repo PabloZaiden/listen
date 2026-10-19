@@ -61,7 +61,7 @@ async function loadNotificationCollection({
   let required = Math.max(LIST_NOTIFICATIONS_DEFAULT_LIMIT, minimumLoaded, current?.loadedThrough ?? 0);
   do {
     const params = new URLSearchParams({
-      limit: String(LIST_NOTIFICATIONS_DEFAULT_LIMIT),
+      limit: String(Math.min(LIST_NOTIFICATIONS_DEFAULT_LIMIT, required - offset)),
       offset: String(offset),
     });
     if (sourceId) params.set("sourceId", sourceId);
