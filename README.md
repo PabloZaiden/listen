@@ -39,8 +39,9 @@ Listen composes its command-line interface with `createWebAppCli()` from
 only its domain commands: `config` (an explicit override for webhook
 configuration) and `notify`.
 
-Use `listen update [--check] [--version <version>]` for installer-backed release
-checks and updates.
+Use `listen update [--check] [--channel stable|latest] [--version <version>]`
+for installer-backed release checks and updates. See
+[binary update channels](docs/binary-updates.md) for main builds and channel selection.
 
 ## Browser notifications
 

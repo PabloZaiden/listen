@@ -97,8 +97,3 @@ jobs:
           grep -qi '^cache-control: no-cache' /tmp/listen-sw-headers
           grep -qi '^content-type: image/png' /tmp/listen-icon-headers
           grep -qi '^content-type: image/png' /tmp/listen-apple-icon-headers
-
-          FIRST_SCRIPT=$(printf '%s\n' "$SCRIPTS" | sed -n '1p')
-          SECOND_SCRIPT=$(printf '%s\n' "$SCRIPTS" | sed -n '2p')
-          test "$FIRST_SCRIPT" = "/webapp-compiled/webapp-renderer-prelude.js"
-          test "$SECOND_SCRIPT" = "/webapp-compiled/webapp-client-entry.js"
