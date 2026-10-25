@@ -11,11 +11,7 @@ curl -fsSL https://raw.githubusercontent.com/pablozaiden/installer/main/install.
   | sh -s -- pablozaiden/listen --channel latest
 ```
 
-On Windows:
-
-```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/pablozaiden/installer/main/install.ps1))) pablozaiden/listen -Channel latest
-```
+Supported binaries target Linux and macOS on x64 and arm64.
 
 ```bash
 listen version

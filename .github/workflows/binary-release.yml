@@ -15,6 +15,13 @@ jobs:
     with:
       release_channel: ${{ github.event_name == 'push' && 'latest' || 'stable' }}
       prebuild_command: bun run tsc && bun run build
+      targets: |
+        [
+          {"os":"ubuntu-latest","target":"linux-x64","bun_target":"bun-linux-x64"},
+          {"os":"ubuntu-latest","target":"linux-arm64","bun_target":"bun-linux-arm64"},
+          {"os":"macos-latest","target":"darwin-x64","bun_target":"bun-darwin-x64"},
+          {"os":"macos-latest","target":"darwin-arm64","bun_target":"bun-darwin-arm64"}
+        ]
       binaries: |
         [
           {
