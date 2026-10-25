@@ -1,16 +1,20 @@
 name: Binary Release
 
 on:
+  push:
+    branches: [main]
   release:
     types: [published]
 
 jobs:
   binaries:
-    uses: pablozaiden/installer/.github/workflows/reusable-binary-release.yml@b47bdc7e7721c12c9b6b8e5e0a97c045bf526a9b # installer v0.2.0
+    if: github.event_name != 'release' || github.event.release.tag_name != 'latest'
+    uses: pablozaiden/installer/.github/workflows/reusable-binary-release.yml@0b6626e46072ebba395d5304577a58c298d39e98
     permissions:
       contents: write
     with:
-      prebuild_command: bun run build
+      release_channel: ${{ github.event_name == 'push' && 'latest' || 'stable' }}
+      prebuild_command: bun run tsc && bun run build
       binaries: |
         [
           {
