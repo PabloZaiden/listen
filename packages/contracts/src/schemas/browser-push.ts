@@ -34,7 +34,6 @@ export const browserPushStatusResponseSchema = z.object({
 export const browserPushSubscriptionClaimOutcomeSchema = z.enum([
   "created",
   "refreshed",
-  "transferred",
 ]);
 
 export const browserPushSubscriptionResponseSchema = z.object({

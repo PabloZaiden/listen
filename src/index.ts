@@ -1,7 +1,7 @@
-import { createListenCli } from "./cli";
+import { getWebAppServer } from "./server";
 
 try {
-  process.exitCode = await createListenCli().run();
+  await getWebAppServer().start();
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`Fatal: ${message}`);

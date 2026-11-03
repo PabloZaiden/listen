@@ -1,5 +1,5 @@
 import type { NotificationDetail, NotificationListItem, WebhookNotificationRequest } from "@listen/contracts";
-import { requireUserId } from "@listen/shared";
+import { getOwner, requireOwner, type OwnerAccount } from "../persistence/account";
 import { createLogger } from "@pablozaiden/webapp/server";
 import {
   deleteNotificationById,
@@ -23,7 +23,7 @@ function nowIso(): string {
 }
 
 export interface ListNotificationsOptions {
-  userId: string;
+  owner: OwnerAccount;
   sourceId?: string;
   limit: number;
   offset: number;
@@ -70,7 +70,9 @@ export function createNotificationFromWebhook(
   source: { id: string; name: string; userId: string },
   options: { publicOrigin: string },
 ): NotificationListItem {
-  const ownerId = requireUserId(source.userId);
+  const owner = getOwner();
+  if (!owner || owner.id !== source.userId) throw new Error("Webhook source does not belong to the Listen owner");
+  const ownerId = requireOwner(owner);
   const notification: PersistedNotification = {
     id: crypto.randomUUID(),
     userId: ownerId,
@@ -82,18 +84,18 @@ export function createNotificationFromWebhook(
     icon: payload.icon,
     createdAt: nowIso(),
   };
-  insertNotification(notification);
+  insertNotification(notification, owner);
   const item = toNotificationListItem(notification);
-  const unreadCount = getUnreadNotificationCount(ownerId);
+  const unreadCount = getUnreadNotificationCount(owner);
   log.info("Notification created", { notificationId: item.id, sourceId: item.sourceId, source: item.source });
-  void sendBrowserPushNotification(item, unreadCount, options.publicOrigin, ownerId).catch((error) => {
+  void sendBrowserPushNotification(item, unreadCount, options.publicOrigin, owner).catch((error) => {
     log.warn("Browser push notification fanout failed", { notificationId: item.id, sourceId: item.sourceId, userId: ownerId, ...errorLogFields(error) });
   });
   return item;
 }
 
-export function getUnreadNotificationCount(userId: string): number {
-  return countUnreadNotifications(requireUserId(userId));
+export function getUnreadNotificationCount(owner: OwnerAccount): number {
+  return countUnreadNotifications(owner);
 }
 
 export function listNotifications(options: ListNotificationsOptions): ListNotificationsResult {
@@ -101,7 +103,7 @@ export function listNotifications(options: ListNotificationsOptions): ListNotifi
   const nextOffset = options.offset + options.limit < result.total ? options.offset + options.limit : undefined;
   return {
     notifications: result.notifications.map(toNotificationListItem),
-    unreadCount: getUnreadNotificationCount(options.userId),
+    unreadCount: getUnreadNotificationCount(options.owner),
     pagination: {
       limit: options.limit,
       offset: options.offset,
@@ -115,9 +117,8 @@ export function listNotifications(options: ListNotificationsOptions): ListNotifi
  * Fetching notification detail marks an unread notification as read.
  * The readAt field is the persisted/public read timestamp.
  */
-export function getNotificationDetail(id: string, userId: string): NotificationDetail | undefined {
-  const ownerId = requireUserId(userId);
-  const read = markPersistedNotificationRead(id, nowIso(), ownerId);
+export function getNotificationDetail(id: string, owner: OwnerAccount): NotificationDetail | undefined {
+  const read = markPersistedNotificationRead(id, nowIso(), owner);
   if (!read) {
     log.warn("Notification open requested but notification was not found", { notificationId: id });
     return undefined;
@@ -125,30 +126,27 @@ export function getNotificationDetail(id: string, userId: string): NotificationD
   return toNotificationDetail(read);
 }
 
-export function deleteNotification(id: string, userId: string): boolean {
-  const ownerId = requireUserId(userId);
-  const existing = getNotificationById(id, ownerId);
+export function deleteNotification(id: string, owner: OwnerAccount): boolean {
+  const existing = getNotificationById(id, owner);
   if (!existing) {
     log.warn("Notification delete requested but notification was not found", { notificationId: id });
     return false;
   }
-  const deleted = deleteNotificationById(id, ownerId);
+  const deleted = deleteNotificationById(id, owner);
   if (deleted) {
     log.info("Notification deleted", { notificationId: id, sourceId: existing.sourceId });
   }
   return deleted;
 }
 
-export function deleteNotifications(options: { userId: string; sourceId?: string; read?: boolean }): number {
-  const ownerId = requireUserId(options.userId);
-  const deletedCount = deletePersistedNotifications({ ...options, userId: ownerId });
+export function deleteNotifications(options: { owner: OwnerAccount; sourceId?: string; read?: boolean }): number {
+  const deletedCount = deletePersistedNotifications(options);
   log.info("Notifications deleted", { sourceId: options.sourceId, read: options.read, deletedCount });
   return deletedCount;
 }
 
-export function markNotificationRead(id: string, userId: string): NotificationListItem | undefined {
-  const ownerId = requireUserId(userId);
-  const existing = getNotificationById(id, ownerId);
+export function markNotificationRead(id: string, owner: OwnerAccount): NotificationListItem | undefined {
+  const existing = getNotificationById(id, owner);
   if (!existing) {
     log.warn("Notification read requested but notification was not found", { notificationId: id });
     return undefined;
@@ -156,7 +154,7 @@ export function markNotificationRead(id: string, userId: string): NotificationLi
   if (existing.readAt) {
     return toNotificationListItem(existing);
   }
-  const read = markPersistedNotificationRead(id, nowIso(), ownerId);
+  const read = markPersistedNotificationRead(id, nowIso(), owner);
   if (!read) {
     log.warn("Notification read update failed after lookup", { notificationId: id });
     return undefined;
@@ -166,9 +164,8 @@ export function markNotificationRead(id: string, userId: string): NotificationLi
   return item;
 }
 
-export function markNotificationUnread(id: string, userId: string): NotificationListItem | undefined {
-  const ownerId = requireUserId(userId);
-  const existing = getNotificationById(id, ownerId);
+export function markNotificationUnread(id: string, owner: OwnerAccount): NotificationListItem | undefined {
+  const existing = getNotificationById(id, owner);
   if (!existing) {
     log.warn("Notification unread requested but notification was not found", { notificationId: id });
     return undefined;
@@ -176,7 +173,7 @@ export function markNotificationUnread(id: string, userId: string): Notification
   if (!existing.readAt) {
     return toNotificationListItem(existing);
   }
-  const unread = markPersistedNotificationUnread(id, ownerId);
+  const unread = markPersistedNotificationUnread(id, owner);
   if (!unread) {
     log.warn("Notification unread update failed after lookup", { notificationId: id });
     return undefined;
@@ -186,9 +183,8 @@ export function markNotificationUnread(id: string, userId: string): Notification
   return item;
 }
 
-export function markNotificationsRead(userId: string, sourceId?: string): number {
-  const ownerId = requireUserId(userId);
-  const updatedCount = markPersistedNotificationsRead({ userId: ownerId, sourceId, read: false }, nowIso());
+export function markNotificationsRead(owner: OwnerAccount, sourceId?: string): number {
+  const updatedCount = markPersistedNotificationsRead({ owner, sourceId, read: false }, nowIso());
   log.info("Notifications marked read", { sourceId, updatedCount });
   return updatedCount;
 }

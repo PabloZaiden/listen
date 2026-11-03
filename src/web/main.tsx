@@ -15,7 +15,9 @@ import listenLogo from "./icons/listen.svg";
 import "./app-badge";
 import { buildInboxActions } from "./actions/inbox-actions";
 import { buildNotificationActions, requestNotificationDelete } from "./actions/notification-actions";
-import { BrowserPushSettings } from "./browserPushSettings";
+import { AccountGate } from "./account-screen";
+import { ownerThemeAdapter } from "./account-runtime";
+import { useAccountSettings } from "./account-settings";
 import { useConfirmation } from "./hooks/use-confirmation";
 import { useNotifications } from "./hooks/use-notifications";
 import { useSources } from "./hooks/use-sources";
@@ -32,6 +34,7 @@ function navigateTo(route: WebAppRoute): void {
 
 function ListenApp(): React.ReactElement {
   const toast = useToast();
+  const accountSections = useAccountSettings();
   const {
     sources,
     loading: sourcesLoading,
@@ -169,6 +172,7 @@ function ListenApp(): React.ReactElement {
         appIcon={listenLogo}
         homeRoute={{ view: "inbox" }}
         version={LISTEN_VERSION}
+        theme={ownerThemeAdapter}
         sidebar={{ getNodes: sidebarNodes, search: false }}
         routes={routes}
         onRouteChange={setCurrentRoute}
@@ -183,13 +187,7 @@ function ListenApp(): React.ReactElement {
           getActions: ({ route }) => headerActions(route),
         }}
         settings={{
-          sections: [
-            {
-              id: "browser-push",
-              title: "Browser notifications",
-              render: () => <BrowserPushSettings />,
-            },
-          ],
+          sections: accountSections,
         }}
       />
       {confirmState ? (
@@ -208,4 +206,4 @@ function ListenApp(): React.ReactElement {
   );
 }
 
-renderWebApp(<ListenApp />);
+renderWebApp(<AccountGate><ListenApp /></AccountGate>);

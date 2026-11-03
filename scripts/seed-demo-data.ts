@@ -1,5 +1,6 @@
 import type { SourceMutationResponse } from "@listen/contracts";
 
+let sessionCookie: string;
 interface DemoNotification {
   title: string;
   shortDescription: string;
@@ -40,6 +41,8 @@ async function apiJson<T>(url: string, init?: RequestInit, context = "API reques
     headers: {
       accept: "application/json",
       "content-type": "application/json",
+      cookie: sessionCookie,
+      origin: new URL(url).origin,
       ...init?.headers,
     },
   });
@@ -162,6 +165,10 @@ async function main(): Promise<void> {
   const sourceCount = envInteger("LISTEN_DEMO_SOURCE_COUNT", 4);
   const notificationCount = envInteger("LISTEN_DEMO_NOTIFICATION_COUNT", 30);
   const reset = envBoolean("LISTEN_DEMO_RESET");
+  const cookieFile = process.env["LISTEN_DEMO_COOKIE_FILE"];
+  if (!cookieFile) throw new Error("LISTEN_DEMO_COOKIE_FILE must name a private file containing an authenticated disposable owner's Cookie header");
+  sessionCookie = (await Bun.file(cookieFile).text()).trim();
+  if (!sessionCookie || /[\r\n]/.test(sessionCookie)) throw new Error("The session cookie file must contain one Cookie header value");
 
   if (reset) {
     await apiJson(`${baseUrl}/api/notifications`, { method: "DELETE" }, "notification reset");
@@ -199,6 +206,6 @@ async function main(): Promise<void> {
 
 await main().catch((error) => {
   console.error(error instanceof Error ? error.message : String(error));
-  console.error("Tip: for local demo seeding, start the server with LISTEN_DISABLE_PASSKEY=true and a temporary LISTEN_DATA_DIR.");
+  console.error("Use an isolated LISTEN_DATA_DIR and LISTEN_DEMO_COOKIE_FILE from a disposable authenticated session.");
   process.exit(1);
 });
