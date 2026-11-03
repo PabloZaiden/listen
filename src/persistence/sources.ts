@@ -1,5 +1,5 @@
 import { getDatabase } from "./database";
-import { requireUserId } from "@listen/shared";
+import { requireOwner, type OwnerAccount } from "./account";
 
 export interface PersistedSource {
   id: string;
@@ -33,8 +33,9 @@ function mapSource(row: SourceRow): PersistedSource {
   };
 }
 
-export function insertSource(source: PersistedSource): void {
-  const userId = requireUserId(source.userId);
+export function insertSource(source: PersistedSource, owner: OwnerAccount): void {
+  const userId = requireOwner(owner);
+  if (source.userId !== userId) throw new Error("Source ownership does not match the owner");
   getDatabase().query(`
     INSERT INTO webhook_sources (id, user_id, name, token_hash, created_at, updated_at, last_used_at)
     VALUES ($id, $userId, $name, $tokenHash, $createdAt, $updatedAt, $lastUsedAt)
@@ -49,16 +50,16 @@ export function insertSource(source: PersistedSource): void {
   });
 }
 
-export function listSources(userId: string): PersistedSource[] {
+export function listSources(owner: OwnerAccount): PersistedSource[] {
   const database = getDatabase();
-  const ownerId = requireUserId(userId);
+  const ownerId = requireOwner(owner);
   return (database.query(
     "SELECT * FROM webhook_sources WHERE user_id = $userId ORDER BY created_at DESC, id DESC",
   ).all({ userId: ownerId }) as SourceRow[]).map(mapSource);
 }
 
-export function getSourceById(id: string, userId: string): PersistedSource | undefined {
-  const ownerId = requireUserId(userId);
+export function getSourceById(id: string, owner: OwnerAccount): PersistedSource | undefined {
+  const ownerId = requireOwner(owner);
   const row = getDatabase().query("SELECT * FROM webhook_sources WHERE id = $id AND user_id = $userId").get({ id, userId: ownerId }) as SourceRow | null;
   return row ? mapSource(row) : undefined;
 }
@@ -68,31 +69,31 @@ export function getSourceByIdForWebhook(id: string): PersistedSource | undefined
   return row ? mapSource(row) : undefined;
 }
 
-export function updateSourceTokenHash(id: string, tokenHash: string, updatedAt: string, userId: string): PersistedSource | undefined {
-  const ownerId = requireUserId(userId);
+export function updateSourceTokenHash(id: string, tokenHash: string, updatedAt: string, owner: OwnerAccount): PersistedSource | undefined {
+  const ownerId = requireOwner(owner);
   getDatabase().query(`
     UPDATE webhook_sources
     SET token_hash = $tokenHash, updated_at = $updatedAt
     WHERE id = $id AND user_id = $userId
   `).run({ id, tokenHash, updatedAt, userId: ownerId });
-  return getSourceById(id, ownerId);
+  return getSourceById(id, owner);
 }
 
-export function updateSourceLastUsedAt(id: string, lastUsedAt: string, userId: string): PersistedSource | undefined {
-  const ownerId = requireUserId(userId);
+export function updateSourceLastUsedAt(id: string, lastUsedAt: string, owner: OwnerAccount): PersistedSource | undefined {
+  const ownerId = requireOwner(owner);
   getDatabase().query(`
     UPDATE webhook_sources
     SET last_used_at = $lastUsedAt, updated_at = $lastUsedAt
     WHERE id = $id AND user_id = $userId
   `).run({ id, lastUsedAt, userId: ownerId });
-  return getSourceById(id, ownerId);
+  return getSourceById(id, owner);
 }
 
-export function deleteSource(id: string, userId: string): { source: PersistedSource; deletedNotificationCount: number } | undefined {
+export function deleteSource(id: string, owner: OwnerAccount): { source: PersistedSource; deletedNotificationCount: number } | undefined {
   const database = getDatabase();
-  const ownerId = requireUserId(userId);
+  const ownerId = requireOwner(owner);
   const deletion = database.transaction(() => {
-    const source = getSourceById(id, ownerId);
+    const source = getSourceById(id, owner);
     if (!source) {
       return undefined;
     }

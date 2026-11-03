@@ -1,12 +1,12 @@
 {
   "name": "@pablozaiden/listen",
-  "description": "Passkey-protected multi-user notification inbox for agents and webhooks",
+  "description": "Single-user, passkey-protected web notification inbox for Docker",
   "version": "0.0.0-development",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun --hot src/index.ts serve",
-    "start": "NODE_ENV=production bun src/index.ts serve",
+    "dev": "bun --hot src/index.ts",
+    "start": "NODE_ENV=production bun src/index.ts",
     "build": "bun src/build.ts",
     "test": "bun scripts/run-tests.ts all",
     "seed:demo": "bun scripts/seed-demo-data.ts",
@@ -15,7 +15,7 @@
     "tsc": "mkdir -p .cache/tsc && bunx tsc --noEmit --pretty false --incremental --tsBuildInfoFile .cache/tsc/build.tsbuildinfo"
   },
   "dependencies": {
-    "@pablozaiden/webapp": "github:PabloZaiden/webapp#5a931db181ce8bbcf75eb68b5e2fb0089fb9362a",
+    "@pablozaiden/webapp": "github:PabloZaiden/webapp#d8b0bf7961a5a90b352f0a2e5a78dfe0572ca528",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-markdown": "10.1.0",
@@ -24,6 +24,7 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
+    "@simplewebauthn/server": "14.0.3",
     "@types/bun": "1.4.3",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",

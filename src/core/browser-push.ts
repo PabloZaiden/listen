@@ -5,10 +5,9 @@ import {
   BROWSER_PUSH_FAILURE_BACKOFF_BASE_MS,
   BROWSER_PUSH_FAILURE_BACKOFF_MAX_MS,
   BROWSER_PUSH_USER_AGENT_MAX_CHARS,
-  requireUserId,
 } from "@listen/shared";
 import {
-  claimBrowserPushSubscription,
+  saveBrowserPushSubscription,
   deleteBrowserPushSubscriptionByEndpoint,
   getBrowserPushSubscriptionByEndpoint,
   getPersistedVapidKeys,
@@ -20,6 +19,7 @@ import {
   type PersistedVapidKeys,
 } from "../persistence/browser-push";
 import { errorLogFields } from "./log-fields";
+import { requireOwner, type OwnerAccount } from "../persistence/account";
 
 const log = createLogger("browser-push");
 const PUSH_TTL_SECONDS = 60 * 60;
@@ -100,28 +100,21 @@ function toPersistedSubscription(subscription: BrowserPushSubscription, req: Req
   };
 }
 
-export function subscribeBrowserPush(subscription: BrowserPushSubscription, req: Request, userId: string): BrowserPushSubscriptionResponse {
-  const ownerId = requireUserId(userId);
-  const claim = claimBrowserPushSubscription(toPersistedSubscription(subscription, req, ownerId));
+export function subscribeBrowserPush(subscription: BrowserPushSubscription, req: Request, owner: OwnerAccount): BrowserPushSubscriptionResponse {
+  const ownerId = requireOwner(owner);
+  const claim = saveBrowserPushSubscription(toPersistedSubscription(subscription, req, ownerId), owner);
   log.info("Browser push subscription saved", {
     subscriptionId: claim.subscription.id,
     userId: ownerId,
     outcome: claim.outcome,
     userAgent: claim.subscription.userAgent,
   });
-  if (claim.outcome === "transferred") {
-    log.info("Browser push subscription ownership transferred", {
-      subscriptionId: claim.subscription.id,
-      userId: ownerId,
-      outcome: claim.outcome,
-    });
-  }
   return { subscribed: true, outcome: claim.outcome };
 }
 
-export function getBrowserPushSubscriptionStatus(endpoint: string, userId: string): BrowserPushStatusResponse {
-  const ownerId = requireUserId(userId);
-  const subscription = getBrowserPushSubscriptionByEndpoint(endpoint, ownerId);
+export function getBrowserPushSubscriptionStatus(endpoint: string, owner: OwnerAccount): BrowserPushStatusResponse {
+  const ownerId = requireOwner(owner);
+  const subscription = getBrowserPushSubscriptionByEndpoint(endpoint, owner);
   log.trace("Browser push subscription status checked", {
     subscriptionId: subscription?.id,
     userId: ownerId,
@@ -130,9 +123,9 @@ export function getBrowserPushSubscriptionStatus(endpoint: string, userId: strin
   return { subscribed: Boolean(subscription) };
 }
 
-export function unsubscribeBrowserPush(endpoint: string, userId: string): BrowserPushStatusResponse {
-  const ownerId = requireUserId(userId);
-  const deleted = deleteBrowserPushSubscriptionByEndpoint(endpoint, ownerId);
+export function unsubscribeBrowserPush(endpoint: string, owner: OwnerAccount): BrowserPushStatusResponse {
+  const ownerId = requireOwner(owner);
+  const deleted = deleteBrowserPushSubscriptionByEndpoint(endpoint, owner);
   log.info("Browser push subscription delete requested", { userId: ownerId, deleted });
   return { subscribed: false };
 }
@@ -194,17 +187,17 @@ function toPushPayload(notification: NotificationListItem, unreadCount: number):
   };
 }
 
-async function sendOneBrowserPush(subscription: PersistedBrowserPushSubscription, payload: BrowserPushPayload): Promise<void> {
+async function sendOneBrowserPush(subscription: PersistedBrowserPushSubscription, payload: BrowserPushPayload, owner: OwnerAccount): Promise<void> {
   try {
     await browserPushSender(toWebPushSubscription(subscription), JSON.stringify(payload), { TTL: PUSH_TTL_SECONDS });
-    markBrowserPushSubscriptionSucceeded(subscription.endpoint, subscription.userId, nowIso());
+    markBrowserPushSubscriptionSucceeded(subscription.endpoint, owner, nowIso());
     log.info("Browser push delivery succeeded", {
       subscriptionId: subscription.id,
       notificationId: payload.data.notificationId,
     });
   } catch (error) {
     if (isPermanentPushFailure(error)) {
-      deleteBrowserPushSubscriptionByEndpoint(subscription.endpoint, subscription.userId);
+      deleteBrowserPushSubscriptionByEndpoint(subscription.endpoint, owner);
       log.info("Removed expired browser push subscription", {
         subscriptionId: subscription.id,
         notificationId: payload.data.notificationId,
@@ -215,7 +208,7 @@ async function sendOneBrowserPush(subscription: PersistedBrowserPushSubscription
     }
     const failedAt = new Date();
     const nextAttemptAt = nextFailureAttempt(subscription.failureCount, failedAt);
-    markBrowserPushSubscriptionFailed(subscription.endpoint, subscription.userId, failedAt.toISOString(), nextAttemptAt);
+    markBrowserPushSubscriptionFailed(subscription.endpoint, owner, failedAt.toISOString(), nextAttemptAt);
     log.warn("Browser push delivery failed", {
       subscriptionId: subscription.id,
       notificationId: payload.data.notificationId,
@@ -228,9 +221,9 @@ async function sendOneBrowserPush(subscription: PersistedBrowserPushSubscription
   }
 }
 
-export async function sendBrowserPushNotification(notification: NotificationListItem, unreadCount: number, publicOrigin: string, userId: string): Promise<void> {
-  const ownerId = requireUserId(userId);
-  const subscriptions = listBrowserPushSubscriptionsForDelivery(Date.now(), nowIso(), ownerId);
+export async function sendBrowserPushNotification(notification: NotificationListItem, unreadCount: number, publicOrigin: string, owner: OwnerAccount): Promise<void> {
+  const ownerId = requireOwner(owner);
+  const subscriptions = listBrowserPushSubscriptionsForDelivery(Date.now(), nowIso(), owner);
   if (subscriptions.length === 0) {
     log.trace("Browser push fanout skipped because no active subscriptions are available", { notificationId: notification.id });
     return;
@@ -246,7 +239,7 @@ export async function sendBrowserPushNotification(notification: NotificationList
     publicOrigin,
     vapidSubject,
   });
-  await Promise.all(subscriptions.map((subscription) => sendOneBrowserPush(subscription, payload)));
+  await Promise.all(subscriptions.map((subscription) => sendOneBrowserPush(subscription, payload, owner)));
 }
 
 export function setBrowserPushSenderForTests(sender?: BrowserPushSender): void {

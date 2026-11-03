@@ -1,5 +1,5 @@
 import { getDatabase } from "./database";
-import { requireUserId } from "@listen/shared";
+import { requireOwner, type OwnerAccount } from "./account";
 
 export interface PersistedNotification {
   id: string;
@@ -43,15 +43,16 @@ function mapNotification(row: NotificationRow): PersistedNotification {
 }
 
 export interface ListNotificationOptions {
-  userId: string;
+  owner: OwnerAccount;
   sourceId?: string;
   limit: number;
   offset: number;
   read?: boolean;
 }
 
-export function insertNotification(notification: PersistedNotification): void {
-  const userId = requireUserId(notification.userId);
+export function insertNotification(notification: PersistedNotification, owner: OwnerAccount): void {
+  const userId = requireOwner(owner);
+  if (notification.userId !== userId) throw new Error("Notification ownership does not match the owner");
   getDatabase().query(`
     INSERT INTO notifications (id, user_id, title, short_description, markdown_content, source_id, source, icon_data_url, created_at, read_at)
     VALUES ($id, $userId, $title, $shortDescription, $markdownContent, $sourceId, $source, $icon, $createdAt, $readAt)
@@ -69,8 +70,8 @@ export function insertNotification(notification: PersistedNotification): void {
   });
 }
 
-function whereClause(options: Pick<ListNotificationOptions, "userId" | "sourceId" | "read">): string {
-  requireUserId(options.userId);
+function whereClause(options: Pick<ListNotificationOptions, "owner" | "sourceId" | "read">): string {
+  requireOwner(options.owner);
   const parts: string[] = ["user_id = $userId"];
   if (options.sourceId) {
     parts.push("source_id = $sourceId");
@@ -85,7 +86,7 @@ export function listNotifications(options: ListNotificationOptions): { notificat
   const where = whereClause(options);
   const params = {
     sourceId: options.sourceId ?? null,
-    userId: options.userId,
+    userId: requireOwner(options.owner),
     limit: options.limit,
     offset: options.offset,
   };
@@ -99,39 +100,39 @@ export function listNotifications(options: ListNotificationOptions): { notificat
   return { notifications: rows.map(mapNotification), total: totalRow.count };
 }
 
-export function countUnreadNotifications(userId: string): number {
-  const ownerId = requireUserId(userId);
+export function countUnreadNotifications(owner: OwnerAccount): number {
+  const ownerId = requireOwner(owner);
   const row = getDatabase().query("SELECT COUNT(*) as count FROM notifications WHERE user_id = $userId AND read_at IS NULL").get({ userId: ownerId }) as { count: number };
   return row.count;
 }
 
-export function getNotificationById(id: string, userId: string): PersistedNotification | undefined {
-  const ownerId = requireUserId(userId);
+export function getNotificationById(id: string, owner: OwnerAccount): PersistedNotification | undefined {
+  const ownerId = requireOwner(owner);
   const row = getDatabase().query("SELECT * FROM notifications WHERE id = $id AND user_id = $userId").get({ id, userId: ownerId }) as NotificationRow | null;
   return row ? mapNotification(row) : undefined;
 }
 
-export function markNotificationRead(id: string, readAt: string, userId: string): PersistedNotification | undefined {
-  const ownerId = requireUserId(userId);
+export function markNotificationRead(id: string, readAt: string, owner: OwnerAccount): PersistedNotification | undefined {
+  const ownerId = requireOwner(owner);
   getDatabase().query(`
     UPDATE notifications
     SET read_at = COALESCE(read_at, $readAt)
     WHERE id = $id AND user_id = $userId
   `).run({ id, readAt, userId: ownerId });
-  return getNotificationById(id, ownerId);
+  return getNotificationById(id, owner);
 }
 
-export function markNotificationUnread(id: string, userId: string): PersistedNotification | undefined {
-  const ownerId = requireUserId(userId);
+export function markNotificationUnread(id: string, owner: OwnerAccount): PersistedNotification | undefined {
+  const ownerId = requireOwner(owner);
   getDatabase().query(`
     UPDATE notifications
     SET read_at = NULL
     WHERE id = $id AND user_id = $userId
   `).run({ id, userId: ownerId });
-  return getNotificationById(id, ownerId);
+  return getNotificationById(id, owner);
 }
 
-export function markNotificationsRead(options: Pick<ListNotificationOptions, "userId" | "sourceId" | "read">, readAt: string): number {
+export function markNotificationsRead(options: Pick<ListNotificationOptions, "owner" | "sourceId" | "read">, readAt: string): number {
   const where = whereClause(options);
   const result = getDatabase().query(`
     UPDATE notifications
@@ -139,23 +140,23 @@ export function markNotificationsRead(options: Pick<ListNotificationOptions, "us
     ${where}
   `).run({
     sourceId: options.sourceId ?? null,
-    userId: options.userId,
+    userId: requireOwner(options.owner),
     readAt,
   });
   return result.changes;
 }
 
-export function deleteNotificationById(id: string, userId: string): boolean {
-  const ownerId = requireUserId(userId);
+export function deleteNotificationById(id: string, owner: OwnerAccount): boolean {
+  const ownerId = requireOwner(owner);
   const result = getDatabase().query("DELETE FROM notifications WHERE id = $id AND user_id = $userId").run({ id, userId: ownerId });
   return result.changes > 0;
 }
 
-export function deleteNotifications(options: Pick<ListNotificationOptions, "userId" | "sourceId" | "read">): number {
+export function deleteNotifications(options: Pick<ListNotificationOptions, "owner" | "sourceId" | "read">): number {
   const where = whereClause(options);
   const result = getDatabase().query(`DELETE FROM notifications ${where}`).run({
     sourceId: options.sourceId ?? null,
-    userId: options.userId,
+    userId: requireOwner(options.owner),
   });
   return result.changes;
 }

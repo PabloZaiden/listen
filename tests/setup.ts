@@ -1,5 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach } from "bun:test";
 import { DEFAULT_LOG_LEVEL, setLogLevel } from "@pablozaiden/webapp/server";
@@ -10,12 +9,11 @@ let dataDir: string;
 let homeDir: string;
 
 beforeEach(() => {
-  dataDir = mkdtempSync(join(tmpdir(), "listen-data-"));
-  homeDir = mkdtempSync(join(tmpdir(), "listen-home-"));
+  mkdirSync(".cache/tests", { recursive: true });
+  dataDir = mkdtempSync(join(process.cwd(), ".cache/tests/listen-data-"));
+  homeDir = mkdtempSync(join(process.cwd(), ".cache/tests/listen-home-"));
   process.env["LISTEN_DATA_DIR"] = dataDir;
   process.env["HOME"] = homeDir;
-  process.env["LISTEN_DISABLE_PASSKEY"] = "true";
-  process.env["LISTEN_DISABLE_SAME_ORIGIN_CHECK"] = "true";
   delete process.env["LISTEN_LOG_LEVEL"];
   initializeDatabase(dataDir);
 });

@@ -1,5 +1,5 @@
 import type { SourceMutationResponse, SourceResponse } from "@listen/contracts";
-import { requireUserId } from "@listen/shared";
+import { requireOwner, type OwnerAccount } from "../persistence/account";
 import { createLogger } from "@pablozaiden/webapp/server";
 import {
   deleteSource,
@@ -33,8 +33,8 @@ export function buildWebhookUrl(publicBaseUrl: string, sourceId: string, token: 
   return `${publicBaseUrl}/api/webhooks/${sourceId}/${token}`;
 }
 
-export async function createSource(name: string, publicBaseUrl: string, userId: string): Promise<SourceMutationResponse> {
-  const ownerId = requireUserId(userId);
+export async function createSource(name: string, publicBaseUrl: string, owner: OwnerAccount): Promise<SourceMutationResponse> {
+  const ownerId = requireOwner(owner);
   const token = generateWebhookToken();
   const source: PersistedSource = {
     id: crypto.randomUUID(),
@@ -44,7 +44,7 @@ export async function createSource(name: string, publicBaseUrl: string, userId: 
     createdAt: nowIso(),
     updatedAt: nowIso(),
   };
-  insertSource(source);
+  insertSource(source, owner);
   const response = toSourceResponse(source);
   log.info("Source created", { sourceId: source.id, userId: ownerId, name: source.name });
   return {
@@ -53,23 +53,22 @@ export async function createSource(name: string, publicBaseUrl: string, userId: 
   };
 }
 
-export function listSources(userId: string): SourceResponse[] {
-  return listPersistedSources(requireUserId(userId)).map(toSourceResponse);
+export function listSources(owner: OwnerAccount): SourceResponse[] {
+  return listPersistedSources(owner).map(toSourceResponse);
 }
 
 export function getSourceForWebhook(id: string): PersistedSource | undefined {
   return getSourceByIdForWebhook(id);
 }
 
-export async function rotateSourceToken(id: string, publicBaseUrl: string, userId: string): Promise<SourceMutationResponse | undefined> {
-  const ownerId = requireUserId(userId);
-  const existing = getSourceById(id, ownerId);
+export async function rotateSourceToken(id: string, publicBaseUrl: string, owner: OwnerAccount): Promise<SourceMutationResponse | undefined> {
+  const existing = getSourceById(id, owner);
   if (!existing) {
     log.warn("Source token rotation requested but source was not found", { sourceId: id });
     return undefined;
   }
   const token = generateWebhookToken();
-  const updated = updateSourceTokenHash(id, await hashWebhookToken(token), nowIso(), ownerId);
+  const updated = updateSourceTokenHash(id, await hashWebhookToken(token), nowIso(), owner);
   if (!updated) {
     log.warn("Source token rotation failed after lookup", { sourceId: id });
     return undefined;
@@ -82,9 +81,8 @@ export async function rotateSourceToken(id: string, publicBaseUrl: string, userI
   };
 }
 
-export function markSourceUsed(id: string, userId: string, usedAt = nowIso()): SourceResponse | undefined {
-  const ownerId = requireUserId(userId);
-  const source = updateSourceLastUsedAt(id, usedAt, ownerId);
+export function markSourceUsed(id: string, owner: OwnerAccount, usedAt = nowIso()): SourceResponse | undefined {
+  const source = updateSourceLastUsedAt(id, usedAt, owner);
   if (!source) {
     log.warn("Source last-used update failed", { sourceId: id });
     return undefined;
@@ -93,9 +91,8 @@ export function markSourceUsed(id: string, userId: string, usedAt = nowIso()): S
   return response;
 }
 
-export function deleteSourceAndNotifications(id: string, userId: string): boolean {
-  const ownerId = requireUserId(userId);
-  const deleted = deleteSource(id, ownerId);
+export function deleteSourceAndNotifications(id: string, owner: OwnerAccount): boolean {
+  const deleted = deleteSource(id, owner);
   if (!deleted) {
     log.warn("Source delete requested but source was not found", { sourceId: id });
     return false;

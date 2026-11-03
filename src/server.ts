@@ -3,7 +3,7 @@ import listenIconSvgPath from "./web/icons/listen.svg" with { type: "file" };
 import listenIcon192Path from "./web/icons/listen-192.png" with { type: "file" };
 import listenIcon512Path from "./web/icons/listen-512.png" with { type: "file" };
 import appleTouchIconPath from "./web/icons/apple-touch-icon.png" with { type: "file" };
-import { createLogger, createWebAppPublicAsset, createWebAppServer, defineRoutes, errorResponse, getRequestBaseUrl, getRequestOriginInfo, jsonResponse, notFound, parseJson, readRuntimeConfig, sqliteWebAppStore, successResponse, type ResourceRealtimeEvent, type RuntimeConfig, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
+import { createLogger, createWebAppPublicAsset, createWebAppServer, defineRoutes, errorResponse, getRequestBaseUrl, getRequestOriginInfo, jsonResponse, notFound, parseJson, readRuntimeConfig, successResponse, type ResourceRealtimeEvent, type RuntimeConfig, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
 import { browserPushEndpointRequestSchema, browserPushSubscribeRequestSchema, createSourceRequestSchema, listNotificationsQuerySchema, sourceMutationResponseSchema, type WebhookNotificationRequest, webhookNotificationRequestSchema } from "@listen/contracts";
 import { WEBHOOK_JSON_BODY_MAX_BYTES } from "@listen/shared";
 import { verifyWebhookToken } from "./core/webhook-tokens";
@@ -15,6 +15,8 @@ import { LISTEN_VERSION } from "./version";
 import { createWebhookRateLimiter, type WebhookRateLimitDecision, type WebhookRateLimiter } from "./core/webhook-rate-limit";
 import { parseQuery } from "./api/validation";
 import { SERVICE_WORKER_ASSET } from "./web/service-worker-asset";
+import { accountSessions, currentOwner, ownerSessionActive, type OwnerAccount } from "./core/account";
+import { createAccountRoutes } from "./api/account";
 
 type ListenRealtimeEvent = ResourceRealtimeEvent;
 
@@ -34,150 +36,145 @@ export function getWebhookCallerKey(req: Request, server: WebhookRequestServer |
   return server?.requestIP(req)?.address?.trim() || "unknown";
 }
 
-interface ListenServerOptions {
-  webhookRateLimiter?: WebhookRateLimiter;
-  webhookCallerKeyResolver?: WebhookCallerKeyResolver;
-}
-
 export function createRoutes(
   runtimeConfig: RuntimeConfig,
   webhookRateLimiter: WebhookRateLimiter,
   webhookCallerKeyResolver: WebhookCallerKeyResolver,
 ) {
-  return defineRoutes<ListenRealtimeEvent>({
+  return defineRoutes<ListenRealtimeEvent, OwnerAccount>({
   "/api/sources": {
-    auth: "user",
+    auth: "required",
     requestSchema: createSourceRequestSchema,
     GET: (_req, ctx) => {
-      const user = ctx.requireUser();
-      return jsonResponse({ sources: listSources(user.id) });
+      const owner = ctx.requireIdentity();
+      return jsonResponse({ sources: listSources(owner) });
     },
     async POST(req, ctx) {
-      const user = ctx.requireUser();
+      const owner = ctx.requireIdentity();
       const body = await parseJson(req, createSourceRequestSchema);
-      const source = await createSource(body.name, getRequestBaseUrl(req, runtimeConfig), user.id);
-      ctx.userRealtime.publishEntityChanged("sources", source.source.id, { payload: source.source });
+      const source = await createSource(body.name, getRequestBaseUrl(req, runtimeConfig), owner);
+      ctx.realtime.publishEntityChanged("sources", source.source.id, { target: { userId: owner.id }, payload: source.source });
       return jsonResponse(sourceMutationResponseSchema.parse(source), { status: 201 });
     },
   },
   "/api/sources/:id/token/rotate": {
-    auth: "user",
+    auth: "required",
     responseSchema: sourceMutationResponseSchema,
     async POST(req, ctx) {
-      const user = ctx.requireUser();
-      const source = await rotateSourceToken(ctx.params.id ?? "", getRequestBaseUrl(req, runtimeConfig), user.id);
+      const owner = ctx.requireIdentity();
+      const source = await rotateSourceToken(ctx.params.id ?? "", getRequestBaseUrl(req, runtimeConfig), owner);
       if (!source) return notFound();
-      ctx.userRealtime.publishEntityChanged("sources", source.source.id, { payload: source.source });
+      ctx.realtime.publishEntityChanged("sources", source.source.id, { target: { userId: owner.id }, payload: source.source });
       return jsonResponse(sourceMutationResponseSchema.parse(source));
     },
   },
   "/api/sources/:id": {
-    auth: "user",
+    auth: "required",
     DELETE: (_req, ctx) => {
-      const user = ctx.requireUser();
-      if (!deleteSourceAndNotifications(ctx.params.id ?? "", user.id)) return notFound();
-      ctx.userRealtime.publishDeleted("sources", ctx.params.id ?? "");
-      ctx.userRealtime.publishChanged("notifications");
+      const owner = ctx.requireIdentity();
+      if (!deleteSourceAndNotifications(ctx.params.id ?? "", owner)) return notFound();
+      ctx.realtime.publishDeleted("sources", ctx.params.id ?? "", { target: { userId: owner.id } });
+      ctx.realtime.publishChanged("notifications", { target: { userId: owner.id } });
       return successResponse();
     },
   },
   "/api/notifications": {
-    auth: "user",
+    auth: "required",
     querySchema: listNotificationsQuerySchema,
     GET: (req, ctx) => {
-      const user = ctx.requireUser();
+      const owner = ctx.requireIdentity();
       const query = parseQuery(req, listNotificationsQuerySchema);
       if (query instanceof Response) return query;
       return jsonResponse(listNotifications({
-        userId: user.id,
+        owner,
         ...query,
       }));
     },
     DELETE: (req, ctx) => {
-      const user = ctx.requireUser();
+      const owner = ctx.requireIdentity();
       const query = parseQuery(req, listNotificationsQuerySchema);
       if (query instanceof Response) return query;
       const deletedCount = deleteNotifications({
-        userId: user.id,
+        owner,
         sourceId: query.sourceId,
         read: query.read,
       });
-      ctx.userRealtime.publishChanged("notifications");
+      ctx.realtime.publishChanged("notifications", { target: { userId: owner.id } });
       return jsonResponse({ deletedCount });
     },
   },
   "/api/notifications/read": {
-    auth: "user",
+    auth: "required",
     POST: (req, ctx) => {
-      const user = ctx.requireUser();
+      const owner = ctx.requireIdentity();
       const url = new URL(req.url);
-      const updatedCount = markNotificationsRead(user.id, url.searchParams.get("sourceId") || undefined);
-      ctx.userRealtime.publishChanged("notifications");
+      const updatedCount = markNotificationsRead(owner, url.searchParams.get("sourceId") || undefined);
+      ctx.realtime.publishChanged("notifications", { target: { userId: owner.id } });
       return successResponse({ success: true, updatedCount });
     },
   },
   "/api/notifications/:id": {
-    auth: "user",
+    auth: "required",
     GET: (_req, ctx) => {
-      const user = ctx.requireUser();
-      const notification = getNotificationDetail(ctx.params.id ?? "", user.id);
+      const owner = ctx.requireIdentity();
+      const notification = getNotificationDetail(ctx.params.id ?? "", owner);
       if (!notification) return notFound();
-      ctx.userRealtime.publishEntityChanged("notifications", notification.id);
+      ctx.realtime.publishEntityChanged("notifications", notification.id, { target: { userId: owner.id } });
       return jsonResponse({ notification });
     },
     DELETE: (_req, ctx) => {
-      const user = ctx.requireUser();
-      if (!deleteNotification(ctx.params.id ?? "", user.id)) return notFound();
-      ctx.userRealtime.publishDeleted("notifications", ctx.params.id ?? "");
+      const owner = ctx.requireIdentity();
+      if (!deleteNotification(ctx.params.id ?? "", owner)) return notFound();
+      ctx.realtime.publishDeleted("notifications", ctx.params.id ?? "", { target: { userId: owner.id } });
       return successResponse();
     },
   },
   "/api/notifications/:id/read": {
-    auth: "user",
+    auth: "required",
     POST: (_req, ctx) => {
-      const user = ctx.requireUser();
-      const notification = markNotificationRead(ctx.params.id ?? "", user.id);
+      const owner = ctx.requireIdentity();
+      const notification = markNotificationRead(ctx.params.id ?? "", owner);
       if (!notification) return notFound();
-      ctx.userRealtime.publishEntityChanged("notifications", notification.id);
+      ctx.realtime.publishEntityChanged("notifications", notification.id, { target: { userId: owner.id } });
       return jsonResponse({ notification });
     },
   },
   "/api/notifications/:id/unread": {
-    auth: "user",
+    auth: "required",
     POST: (_req, ctx) => {
-      const user = ctx.requireUser();
-      const notification = markNotificationUnread(ctx.params.id ?? "", user.id);
+      const owner = ctx.requireIdentity();
+      const notification = markNotificationUnread(ctx.params.id ?? "", owner);
       if (!notification) return notFound();
-      ctx.userRealtime.publishEntityChanged("notifications", notification.id);
+      ctx.realtime.publishEntityChanged("notifications", notification.id, { target: { userId: owner.id } });
       return jsonResponse({ notification });
     },
   },
   "/api/browser-push/config": {
-    auth: "user",
+    auth: "required",
     GET: (req, ctx) => {
-      ctx.requireUser();
+      ctx.requireIdentity();
       return jsonResponse(getBrowserPushConfig(getRequestOriginInfo(req, runtimeConfig).origin));
     },
   },
   "/api/browser-push/subscriptions": {
-    auth: "user",
+    auth: "required",
     async POST(req, ctx) {
-      const user = ctx.requireUser();
+      const owner = ctx.requireIdentity();
       const body = await parseJson(req, browserPushSubscribeRequestSchema);
-      return jsonResponse(subscribeBrowserPush(body.subscription, req, user.id), { status: 201 });
+      return jsonResponse(subscribeBrowserPush(body.subscription, req, owner), { status: 201 });
     },
     async DELETE(req, ctx) {
-      const user = ctx.requireUser();
+      const owner = ctx.requireIdentity();
       const body = await parseJson(req, browserPushEndpointRequestSchema);
-      return jsonResponse(unsubscribeBrowserPush(body.endpoint, user.id));
+      return jsonResponse(unsubscribeBrowserPush(body.endpoint, owner));
     },
   },
   "/api/browser-push/subscriptions/lookup": {
-    auth: "user",
+    auth: "required",
     async POST(req, ctx) {
-      const user = ctx.requireUser();
+      const owner = ctx.requireIdentity();
       const body = await parseJson(req, browserPushEndpointRequestSchema);
-      return jsonResponse(getBrowserPushSubscriptionStatus(body.endpoint, user.id));
+      return jsonResponse(getBrowserPushSubscriptionStatus(body.endpoint, owner));
     },
   },
   "/api/webhooks/:sourceId/:token": {
@@ -214,7 +211,9 @@ export function createRoutes(
         requireContentType: true,
       });
       const notification = createNotificationFromWebhook(body, source, { publicOrigin: getRequestOriginInfo(req, runtimeConfig).origin });
-      markSourceUsed(source.id, source.userId);
+      const owner = currentOwner();
+      if (!owner || owner.id !== source.userId) throw new Error("Webhook source does not belong to the owner");
+      markSourceUsed(source.id, owner);
       ctx.realtime.publishEntityChanged("notifications", notification.id, { target: { userId: source.userId }, payload: notification });
       ctx.realtime.publishEntityChanged("sources", source.id, { target: { userId: source.userId } });
       return jsonResponse({ id: notification.id }, { status: 201 });
@@ -234,14 +233,13 @@ export function getWebAppServer(): WebAppServer<ListenRealtimeEvent> {
 
 function createListenWebAppServer(
   runtimeConfig: RuntimeConfig,
-  options: ListenServerOptions = {},
 ): WebAppServer<ListenRealtimeEvent> {
   const dataDir = runtimeConfig.dataDir;
   initializeDatabase(dataDir);
-  const store = sqliteWebAppStore({ dataDir, fileName: "listen.db" });
-  const webhookRateLimiter = options.webhookRateLimiter ?? createWebhookRateLimiter();
-  const webhookCallerKeyResolver = options.webhookCallerKeyResolver ?? getWebhookCallerKey;
-  const server = createWebAppServer<ListenRealtimeEvent>({
+  const webhookRateLimiter = createWebhookRateLimiter();
+  const authRateLimiter = createWebhookRateLimiter({ callerLimit: 30 });
+  let listener: Server<WebAppWebSocketData> | undefined;
+  const server = createWebAppServer<ListenRealtimeEvent, OwnerAccount>({
     appName: "Listen",
     envPrefix: "LISTEN",
     runtimeConfig,
@@ -256,48 +254,38 @@ function createListenWebAppServer(
       },
     },
     version: LISTEN_VERSION,
-    store,
-    auth: { passkeys: true, apiKeys: true, deviceAuth: true },
-    realtime: { path: "/api/ws" },
-    routes: createRoutes(runtimeConfig, webhookRateLimiter, webhookCallerKeyResolver),
+    lifecycle: {
+      afterStart(server) { listener = server; },
+      afterStop() { listener = undefined; },
+    },
+    identity: {
+      async authenticate(req) {
+        const session = await accountSessions(req, runtimeConfig).authenticate(req);
+        return session ? { identity: session.identity, credential: "ambient" } : undefined;
+      },
+    },
+    realtime: {
+      path: "/api/ws",
+      async authenticate(req) {
+        const authenticated = await accountSessions(req, runtimeConfig).authenticate(req);
+        if (!authenticated) return undefined;
+        const { identity: owner, session } = authenticated;
+        return {
+          data: { userId: owner.id },
+          credential: "ambient" as const,
+          options: {
+            authorize: (publication) => ownerSessionActive(owner, session) && publication.target.userId === owner.id,
+          },
+        };
+      },
+    },
+    routes: {
+      ...createAccountRoutes(runtimeConfig, (req) => authRateLimiter.checkCaller(getWebhookCallerKey(req, listener)).allowed),
+      ...createRoutes(runtimeConfig, webhookRateLimiter, getWebhookCallerKey),
+    },
     publicRoutes: { [SERVICE_WORKER_ASSET.path]: createWebAppPublicAsset(SERVICE_WORKER_ASSET) },
   });
   return server;
-}
-
-export interface ListenTestOptions {
-  host?: RuntimeConfig["host"];
-  port?: RuntimeConfig["port"];
-  dataDir?: RuntimeConfig["dataDir"];
-  passkeyDisabled?: RuntimeConfig["passkeyDisabled"];
-  sameOriginDisabled?: RuntimeConfig["sameOriginDisabled"];
-  logLevel?: RuntimeConfig["logLevel"];
-  publicBaseUrl?: RuntimeConfig["publicBaseUrl"];
-  trustProxy?: RuntimeConfig["trustProxy"];
-}
-
-function applyListenTestOptions(config: RuntimeConfig, options: ListenTestOptions): RuntimeConfig {
-  return {
-    ...config,
-    host: options.host ?? config.host,
-    port: options.port ?? config.port,
-    dataDir: options.dataDir ?? config.dataDir,
-    passkeyDisabled: options.passkeyDisabled ?? config.passkeyDisabled,
-    sameOriginDisabled: options.sameOriginDisabled ?? config.sameOriginDisabled,
-    logLevel: options.logLevel ?? config.logLevel,
-    logLevelFromEnv: options.logLevel === undefined ? config.logLevelFromEnv : true,
-    publicBaseUrl: options.publicBaseUrl === undefined ? config.publicBaseUrl : options.publicBaseUrl,
-    trustProxy: options.trustProxy ?? config.trustProxy,
-  };
-}
-
-export function createFetchHandler(
-  testOptions: ListenTestOptions = {},
-  options: ListenServerOptions = {},
-): (req: Request, server?: Server<WebAppWebSocketData>) => Promise<Response | undefined> {
-  const runtimeConfig = applyListenTestOptions(readRuntimeConfig({ appName: "Listen", envPrefix: "LISTEN" }), testOptions);
-  const handlerApp = createListenWebAppServer(runtimeConfig, options);
-  return (req, server) => handlerApp.handleRequest(req, server);
 }
 
 export async function startServer(): Promise<Server<WebAppWebSocketData>> {

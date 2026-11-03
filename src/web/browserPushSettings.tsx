@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import type { BrowserPushConfigResponse, BrowserPushStatusResponse, BrowserPushSubscription, BrowserPushSubscriptionResponse } from "@listen/contracts";
-import { appJson, Button, FormGroup, FormSection, useToast } from "@pablozaiden/webapp/web";
+import { appJson, Button, SettingsFieldRow, useToast } from "@pablozaiden/webapp/web";
 import { mutationErrorMessage, useMutationTracker } from "./mutation-state";
 
 type BrowserPushUiState = "loading" | "unsupported" | "denied" | "unsubscribed" | "subscribed" | "error";
@@ -304,9 +304,8 @@ export function BrowserPushSettings({ onEnabled, onDisabled }: { onEnabled?: () 
   ) : primaryAction;
 
   return (
-    <FormSection title="Browser notifications">
-      <FormGroup title="This browser" description={browserPushDescription(state)} actions={actionControls}>
-        {state.message ? (
+    <SettingsFieldRow title="This browser" description={browserPushDescription(state)} actions={actionControls}
+      feedback={state.message ? (
           <div className="browser-push-error" aria-live="polite">
             <p className="error">{browserPushErrorSummary(state.message)}</p>
             <details>
@@ -314,8 +313,7 @@ export function BrowserPushSettings({ onEnabled, onDisabled }: { onEnabled?: () 
               <code>{state.message}</code>
             </details>
           </div>
-        ) : null}
-      </FormGroup>
-    </FormSection>
+      ) : undefined}
+    />
   );
 }

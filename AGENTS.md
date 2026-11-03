@@ -6,25 +6,23 @@ Use Bun only. Run `bun install` before development when dependencies are missing
 
 ## Project Overview
 
-Listen is a multi-user notification inbox for coding agents. It has a Bun backend, React browser UI, SQLite persistence, framework passkey/API-key/device authentication, source-specific public webhook ingestion, framework realtime updates, and a single `listen` CLI/server binary.
+Listen is a single-user web notification inbox for coding agents. It has a Bun backend, React browser UI, application-owned SQLite/passkey/session persistence, source-specific public webhook ingestion and framework realtime. Docker is the only distribution; its executable is internal, not a client CLI. Start with [development](docs/development.md) and consult [operations](docs/operations.md) for migration/restore.
 
 ## Authentication and Security
 
-All protected app APIs must use framework auth. The webhook endpoint is the only app-owned unauthenticated write endpoint. Never log webhook tokens, passkey material, cookies, auth headers, bearer tokens, API keys, or raw credentials. Never store raw webhook tokens. Never trust `source` from webhook payloads.
+All protected app APIs and realtime require the sole Listen owner. Listen explicitly composes optional Webapp passkey/session helpers; core has no account policy. The token-validated webhook is the only unauthenticated domain write. Bootstrap/login ceremonies are separately bounded auth endpoints. Never log webhook tokens, passkey material, cookies, auth headers or raw credentials. Never store raw webhook tokens. Never trust `source` from webhook payloads.
 Return each secret only in the minimum representation required by the caller; do not expose redundant raw credential fields.
 Define response schemas for endpoints that return one-time credentials and serialize only those schemas.
 Never log webhook tokens, complete webhook URLs, or other raw credentials.
 
-Multi-user ownership is mandatory in core and persistence APIs. Optional ownership must never implicitly mean global access. Deliberate public or administrative cross-user operations must use separately named, narrowly scoped functions, and database row types must remain aligned with `NOT NULL` ownership constraints instead of masking impossible nulls with empty identifiers.
-Multi-user upserts must never rewrite an ownership field as an incidental conflict update. When a globally unique client resource can move between users, model the move as a separately named claim/transfer operation with an atomic ownership change and a typed result.
-Never log browser push endpoints, push keys, or subscription credentials. Browser push ownership-transition logs may include only safe, non-credential metadata.
+Private core/persistence operations require a current `OwnerAccount`. Missing/stale identity or arbitrary IDs never imply global access. The singleton owner is real app-owned state; do not introduce roles, invitations, user lists, API keys or device auth. Keep row types aligned with non-null ownership constraints. Public webhook authority comes only from the validated saved source. Never log browser push endpoints, keys or subscription credentials.
 
 Public endpoint rate limits must isolate independent callers and tenants; attacker-controlled invalid traffic must not consume another user's primary allowance. In-memory limiter maps must expire inactive entries and enforce a hard size bound. Forwarded client identity may only be used through explicitly configured trusted-proxy behavior.
 
 ## TypeScript
 
 Keep strict types. Prefer shared contracts from `packages/contracts`, shared limits from `packages/shared`, and framework helpers from `@pablozaiden/webapp`. Use bracket notation for environment variables. All source code must be TypeScript; do not add JavaScript source files. Bun serves and executes TypeScript directly, including browser-facing entrypoints such as service workers.
-Use `@pablozaiden/webapp/cli` for generic CLI argument and flag lookup, result types, and result formatting; keep Listen-specific command validation and business behavior in Listen-owned modules.
+Use direct Bun startup, not framework CLI/config/updater modules.
 Do not mutate returned framework configuration or internal objects to simulate constructor options. When a required framework extension point is missing, add it upstream and consume its public API through a GitHub commit or tag rather than depending on object identity or initialization order. Test-only option types must describe exactly the overrides the helper supports.
 Use the supported Webapp request-body parsers and public-asset APIs instead of
 reconstructing `Request` objects, importing TypeScript as raw text, concatenating
@@ -75,7 +73,7 @@ App routes should be declared in `src/server.ts` with `defineRoutes` and delegat
 Use Bun APIs and scripts. Do not add Node-only tooling. Use `bun:sqlite` for SQLite and `@pablozaiden/webapp` for HTTP/realtime serving.
 Service-worker push, notification, click-navigation, and app-badge behavior
 remain Listen-owned. Define the worker as a typed Webapp public asset and use
-the same asset metadata for development serving and standalone binary builds.
+the same asset metadata for development serving and embedded container builds.
 
 ## Persistence
 
@@ -89,13 +87,13 @@ infrastructure when they have no supported consumer.
 
 Application state delivery uses framework realtime as the single event system.
 Do not add or maintain a parallel app-owned event emitter.
-When a domain hook owns a user-scoped live collection, use framework
+When a domain hook owns an owner-scoped live collection, use framework
 `useLiveQuery` for its subscription, activation/reconnect snapshots,
 cancellation and mutation reconciliation. Route views must not subscribe to
 the same resource a second time. Keep the notification owner mounted in
 `ListenApp` so inbox, detail and header mutations share its mutation barrier.
 Use query dependencies for route filters and authoritative loaded-prefix
-snapshots for paginated recovery; keep unread counts user-wide.
+snapshots for paginated recovery; keep unread counts inbox-wide.
 
 ## Testing
 
@@ -115,7 +113,7 @@ security invariant it protects.
 
 ## Database Migrations
 
-Keep the base schema in `src/persistence/database.ts` for initial release. Future schema changes must use sequential idempotent migrations in `src/persistence/migrations`.
+Keep the fresh schema in `src/persistence/schema.ts`. Sequential idempotent migrations belong in `src/persistence/migrations`; the approved singleton upgrade must back up before mutation, merge all domain data, retain only owner access, invalidate old sessions/links/machine credentials, and commit its marker atomically.
 Migrations must preserve supported data and ownership constraints, handle
 existing databases safely, and never restore removed legacy migrations as part
 of fresh-database initialization.
@@ -126,7 +124,7 @@ Do not use `INSERT OR REPLACE`. Do not interpolate untrusted values into SQL. Us
 
 ## Common Patterns
 
-Use Route -> Core -> Persistence imports. Use shared zod schemas for validation. Use `@pablozaiden/installer` for update behavior. Use the framework shell/settings/title-bar action menu/realtime/auth primitives instead of rebuilding them in Listen. Browser entrypoints should compose focused route modules, domain hooks, and interaction components instead of implementing those concerns inline. Route components rendered by `WebAppRoot.routes` must use `Page` as the top-level wrapper, and app code must not render directly into `.wapp-main-content` or duplicate the fixed framework title with an app-local heading. Define actions owned by a route-backed sidebar node once on that node so the framework can reuse them for sidebar context menus and the active title-bar menu; use `WebAppRoot.header.getActions` only for routes without an owning sidebar node or genuinely additional route actions. Framework dialogs handle Enter/Escape, destructive/delete actions are red and last, sidebar badges are compact status dots, and header action buttons must stay visible while titles/subtitles truncate. When in doubt, inspect `github.com/pablozaiden/clanky` and follow the closest pattern unless a current Listen requirement differs.
+Use Route -> Core -> Persistence imports and shared zod validation. Use the framework shell/settings/title-bar action menu/realtime primitives; Listen owns its auth gate and minimal account screens. Only passkey, logout, theme, push and version belong in Settings. Browser entrypoints should compose focused route modules, domain hooks and interaction components. Route components rendered by `WebAppRoot.routes` use `Page` as the top-level wrapper; never render directly into `.wapp-main-content` or duplicate the fixed title. Define route actions once on their sidebar node; use `header.getActions` only for routes without an owning node or additional actions. Framework dialogs own Enter/Escape, red/last destructive actions and compact sidebar status dots. Keep header actions visible while titles truncate.
 
 Webapp owns document/root viewport sizing, shell overflow, safe-area spacing,
 and dynamic viewport tokens such as `--wapp-viewport-height`. Listen CSS must
