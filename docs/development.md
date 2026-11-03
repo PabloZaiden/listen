@@ -26,6 +26,10 @@ bun run build && bun run test
 bun run tsc
 ```
 
+PR checks retain separate required `build-and-test` and `smoke-test` jobs.
+The former exercises compiled and Docker workflows; the latter verifies
+development serving, assets, PWA headers and private-access enforcement.
+
 The approved fresh single-account and legacy upgrade workflows use disposable
 data, compiled server startup and real HTTP/WebSocket/WebAuthn verification.
 Legacy SQL is fixture setup, not an assertion boundary. Migration assertions
