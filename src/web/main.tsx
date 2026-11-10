@@ -109,25 +109,30 @@ function ListenApp(): React.ReactElement {
     });
   }
 
-  const sidebarNodes = useCallback((): SidebarNode[] => {
+  const inboxActions = useMemo(() => {
     const sourceId = currentRoute.view === "inbox" ? sourceIdFromRoute(currentRoute) : undefined;
     const markAllReadKey = `notifications:read:${sourceId ?? "all"}`;
+    return buildInboxActions({
+      markAllReadBusy: headerMutations.isBusy(markAllReadKey),
+      confirmBusy,
+      onMarkAllRead: () => { void markAllAsRead(sourceId); },
+      onDeleteAll: () => deleteAll(sourceId),
+    });
+  }, [confirmBusy, currentRoute, headerMutations, notificationActions, sources, toast]);
+
+  const sidebarNodes = useCallback((): SidebarNode[] => {
     return [
       {
         type: "item",
         id: "inbox",
         title: "Inbox",
         route: { view: "inbox" },
-        actions: buildInboxActions({
-          markAllReadBusy: headerMutations.isBusy(markAllReadKey),
-          confirmBusy,
-          onMarkAllRead: () => { void markAllAsRead(sourceId); },
-          onDeleteAll: () => deleteAll(sourceId),
-        }),
+        actions: inboxActions.filter((action) => action.id !== "delete-all"),
+        contextActions: inboxActions,
       },
       { type: "item", id: "sources", title: "Sources", route: { view: "sources" } },
     ];
-  }, [confirmBusy, currentRoute, headerMutations, notificationActions, sources, toast]);
+  }, [inboxActions]);
 
   const headerActions = useCallback((route: WebAppRoute): ActionMenuItem[] => {
     if (route.view !== "notification") return [];
@@ -184,6 +189,9 @@ function ListenApp(): React.ReactElement {
             const sourceId = sourceIdFromRoute(route);
             return sources.find((source) => source.id === sourceId)?.name ?? "Inbox";
           },
+          getHeaderActions: ({ route }) => route.view === "inbox"
+            ? { primary: inboxActions.filter((action) => action.id === "delete-all") }
+            : {},
           getActions: ({ route }) => headerActions(route),
         }}
         settings={{

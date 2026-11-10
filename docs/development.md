@@ -13,6 +13,12 @@ Do not import or duplicate the former framework account/admin/runtime stack.
 The password bonus is not enabled. Persistence is explicit, including the
 selected browser preferences adapter.
 
+Inbox actions share one descriptor builder. `Delete all` uses Webapp's
+`header.getHeaderActions` primary slot so it is visible when space permits and
+automatically moves into overflow on narrower headers. The sidebar retains both
+actions through `contextActions`; only `Mark all as read` stays in `actions` to
+avoid duplicating the primary action in the header menu.
+
 Private domain operations require the current `OwnerAccount`; arbitrary user
 IDs or missing identity never imply global access. Public webhook ingestion
 first validates the source token, then derives the owner from that source.
